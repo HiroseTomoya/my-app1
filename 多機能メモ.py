@@ -377,7 +377,7 @@ class MultiApp:
 
     def next_month(self):
         if self.cur_month == 12: self.cur_month = 1; self.cur_year += 1
-        else: self.cur_month += 1
+        else: self.cur_month += \
         self.draw_calendar()
 
     def edit_day_memo(self, day):
