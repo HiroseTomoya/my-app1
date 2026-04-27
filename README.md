@@ -32,7 +32,7 @@ Python Tkinter（GUI） threading（並行処理） hashlib（セキュリティ
 
 実行方法
 
-1.Pythonをインストール 2.本リポジトリをクローン 　git clone https://github.com/HiroseTomoya/my-applications/blob/main/test.py 3.実行 　python test.py
+1.Pythonをインストール 2.本リポジトリをクローン 　https://github.com/HiroseTomoya/my-app1/blob/main/%E5%A4%9A%E6%A9%9F%E8%83%BD%E3%83%A1%E3%83%A2.py 3.実行 　python test.py
 
 今後の改善点
 
