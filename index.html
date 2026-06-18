@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+    <meta name="description" content="シフトの提出から確定・確認までをひとつのアプリで完結させるシフト管理システム">
+    <title>もっくん シフト管理</title>
+    <base target="_top">
+    <!-- Google Fonts & Material Symbols -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <?!= include('css'); ?>
+  </head>
+  <body>
+    <!-- ===== ログインモーダル ===== -->
+    <div id="login-modal" class="modal-overlay show">
+      <div class="modal-content">
+        <div class="modal-header-accent">
+          <span class="material-symbols-outlined">calendar_month</span>
+        </div>
+        <div class="login-brand">
+          <h2>もっくん シフト</h2>
+          <p>シフト管理をもっとシンプルに</p>
+        </div>
+        <div class="form-group">
+          <label>ユーザーID</label>
+          <input type="text" id="login-staff-id" placeholder="ユーザーIDを入力 (例: 001)" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>パスワード</label>
+          <input type="password" id="login-password" placeholder="パスワードを入力" autocomplete="current-password">
+        </div>
+        <div id="login-error" style="color:var(--c-red); font-size:0.85rem; margin-bottom:1rem; text-align:center; font-weight:600; min-height:1.2em;"></div>
+        <button class="btn-add" id="login-btn" onclick="handleLogin()">
+          <span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle;">login</span>
+          ログイン
+        </button>
+      </div>
+    </div>
+    <!-- ===== 同日出勤者確認モーダル (全体シフト・マイシフト共通) ===== -->
+    <div id="coworkers-modal" class="modal-overlay" onclick="if(event.target===this) closeCoworkersModal()">
+      <div class="modal-content" style="max-width: 500px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem;">
+          <h3 id="coworkers-date-title" style="margin:0; font-weight:800; font-size:1.1rem;"></h3>
+          <button class="btn-remove" onclick="closeCoworkersModal()" style="padding:0.4rem;">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div id="coworkers-loading" style="text-align:center; padding:2rem; color:var(--c-text-muted); display:none;">
+          <span class="material-symbols-outlined" style="font-size:2rem; animation: spin 1s linear infinite;">sync</span>
+          <p style="margin:0.5rem 0 0; font-size:0.85rem;">読み込み中...</p>
+        </div>
+        <div id="coworkers-list" style="max-height:55vh; overflow-y:auto; border-radius:var(--radius-md); background:hsl(210, 40%, 99%); border:1px solid var(--c-border);">
+          <!-- JSでリスト生成 -->
+        </div>
+        <button class="btn-secondary" style="margin-top:1rem;" onclick="closeCoworkersModal()">閉じる</button>
+      </div>
+    </div>
+    <!-- ===== 確定シフト詳細モーダル（スマホ用）===== -->
+    <div id="shift-detail-modal" class="modal-overlay" onclick="if(event.target===this) closeShiftDetailModal()">
+      <div class="modal-content" style="max-width: 420px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem;">
+          <h3 id="shift-detail-modal-title" style="margin:0; font-weight:800; font-size:1.1rem;"></h3>
+          <button class="btn-remove" onclick="closeShiftDetailModal()" style="padding:0.4rem;">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div id="shift-detail-modal-body"><!-- JSで生成 --></div>
+        <button class="btn-secondary" style="margin-top:1rem;" onclick="closeShiftDetailModal()">閉じる</button>
+      </div>
+    </div>
+    <!-- ===== シフト提出確認モーダル ===== -->
+    <div id="submit-confirm-modal" class="modal-overlay" onclick="if(event.target===this) closeSubmitConfirmModal()">
+      <div class="modal-content" style="max-width: 480px;">
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem; border-bottom:1px solid var(--c-border); padding-bottom:1rem;">
+          <div style="width:40px;height:40px;background:var(--c-primary-light);border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span class="material-symbols-outlined" style="color:var(--c-primary);">send</span>
+          </div>
+          <div>
+            <h3 style="margin:0; font-weight:800; font-size:1rem;">希望シフトの送信確認</h3>
+            <p id="submit-confirm-subtitle" style="margin:0.15rem 0 0; font-size:0.8rem; color:var(--c-text-muted);"></p>
+          </div>
+        </div>
+        <div id="submit-confirm-list" class="confirm-modal-list"><!-- JSで生成 --></div>
+        <div class="confirm-modal-actions">
+          <button class="btn-secondary" onclick="closeSubmitConfirmModal()">キャンセル</button>
+          <button class="btn-add" id="submit-confirm-btn" onclick="executeSubmit()">
+            <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">check_circle</span>
+            送信する
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- ===== 管理者用: 従業員のシフト個別編集モーダル ===== -->
+    <div id="admin-edit-modal" class="modal-overlay" onclick="if(event.target===this) closeAdminEditModal()">
+      <div class="modal-content" style="max-width: 460px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem;">
+          <h3 id="admin-edit-title" style="margin:0; font-weight:800;">シフトの編集</h3>
+          <button class="btn-remove" onclick="closeAdminEditModal()" style="padding:0.4rem;">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <!-- 希望シフト参照表示 -->
+        <div id="admin-edit-desired-ref" style="background:var(--c-red-light); border:1px solid hsl(350,80%,88%); border-radius:var(--radius-md); padding:0.75rem 1rem; margin-bottom:1.25rem; display:none;">
+          <span style="font-size:0.75rem; font-weight:700; color:var(--c-red);">
+            <span class="material-symbols-outlined" style="font-size:0.9rem; vertical-align:middle;">event_note</span>
+            従業員の希望:
+          </span>
+          <span id="admin-edit-desired-ref-time" style="font-weight:700; color:var(--c-red); margin-left:0.5rem;"></span>
+        </div>
+        <div id="admin-edit-body">
+          <div class="form-row" id="admin-edit-time-row">
+            <div class="form-group half">
+              <label>出勤時間</label>
+              <select id="admin-edit-start"></select>
+            </div>
+            <div class="form-group half">
+              <label>退勤時間（任意）</label>
+              <select id="admin-edit-end">
+                <option value="">指定なし</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group half">
+              <label>休憩時間</label>
+              <div style="display:flex; align-items:center; gap:0.25rem;">
+                <select id="admin-edit-rest-start" style="flex:1;">
+                  <option value="">なし</option>
+                </select>
+                <span>〜</span>
+                <select id="admin-edit-rest-end" style="flex:1;">
+                  <option value="">なし</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group half">
+              <label>ポジション</label>
+              <select id="admin-edit-position">
+                <option value="社員">社員</option>
+                <option value="ホール">ホール</option>
+                <option value="キッチン">キッチン</option>
+                <option value="リーダー">リーダー</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; gap:0.75rem; margin-top:1rem;">
+            <button class="btn-secondary" style="flex:1; color:var(--c-red); border-color:hsl(350,80%,88%); background:var(--c-red-light);" onclick="removeStaffShiftFromAdmin()">
+              <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">cancel</span>
+              休み（クリア）
+            </button>
+            <button class="btn-add" style="flex:1;" onclick="applyStaffShiftFromAdmin()">
+              <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">check</span>
+              変更を適用
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ===== トースト通知 ===== -->
+    <div id="toast" class="toast toast-success">
+      <span class="material-symbols-outlined">check_circle</span>
+      <span id="toast-message">保存しました</span>
+    </div>
+    <!-- ===== メインアプリ ===== -->
+    <div id="app-container" style="display: none;">
+      
+      <!-- ==========================================
+           左サイドバー
+      ========================================== -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span class="material-symbols-outlined" style="font-size:1.75rem; color:hsl(250, 100%, 75%);background:linear-gradient(135deg, var(--c-primary), hsl(270,80%,60%));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">calendar_month</span>
+          <h2>もっくん シフト</h2>
+        </div>
+        <nav class="sidebar-nav">
+          <ul>
+            <li class="nav-section-title" id="nav-section-staff">一般メニュー</li>
+            <li id="nav-myshift-li"><a href="#" id="nav-myshift" onclick="switchMode('view'); return false;"><span class="material-symbols-outlined">calendar_today</span>マイシフト</a></li>
+            <li id="nav-allshift-li"><a href="#" id="nav-allshift" onclick="switchMode('allshift'); return false;"><span class="material-symbols-outlined">groups</span>全体シフト</a></li>
+            <li id="nav-submit-li"><a href="#" id="nav-submit" onclick="switchMode('submit'); return false;"><span class="material-symbols-outlined">edit_calendar</span>シフト希望提出</a></li>
+            <li class="nav-section-title" id="nav-section-admin" style="display:none;">管理メニュー</li>
+            <li id="nav-admin-li" style="display:none;"><a href="#" id="nav-admin" onclick="switchMode('admin'); return false;"><span class="material-symbols-outlined">admin_panel_settings</span>シフト作成・編集</a></li>
+          </ul>
+        </nav>
+        
+        <div class="sidebar-user" style="cursor: pointer;" onclick="logout()">
+          <div class="user-avatar" id="sidebar-avatar">？</div>
+          <div class="user-info">
+            <div class="user-name" id="sidebar-user-name">未ログイン</div>
+            <div class="user-role" style="display:flex; align-items:center; gap:0.3rem;">
+              <span class="material-symbols-outlined" style="font-size:0.9rem;">logout</span>
+              <span>ログアウト</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <!-- ==========================================
+           メインコンテンツ
+      ========================================== -->
+      <main class="main-content">
+        <!-- 提出期限ロックバナー -->
+        <div id="deadline-lock-banner" class="deadline-lock-banner" style="display:none;">
+          <span class="material-symbols-outlined">lock</span>
+          <span id="deadline-lock-message">シフト希望の提出期限を過ぎています。</span>
+        </div>
+        <div class="main-header">
+          <div class="header-left">
+            <button class="mobile-menu-btn" onclick="toggleSidebar()" id="mobile-menu-btn" aria-label="メニューを開く">
+              <span class="material-symbols-outlined">menu</span>
+            </button>
+            <h1 id="page-title">シフト希望提出</h1>
+          </div>
+          <!-- アクションボタン -->
+          <button class="btn-save" id="btn-save-gas" onclick="openSubmitConfirmModal()" style="display:none;">
+            <span class="material-symbols-outlined">send</span>
+            希望を提出する
+          </button>
+          <button class="btn-save" id="btn-save-admin" onclick="saveAdminGrid()" style="display:none;">
+            <span class="material-symbols-outlined">done_all</span>
+            確定シフトを保存
+          </button>
+        </div>
+        <!-- タブ切り替え（マイシフト画面でのみ表示） -->
+        <div class="tab-container" id="myshift-tabs" style="display:none;">
+          <button class="tab-btn active" id="tab-btn-confirmed" onclick="switchMyShiftTab('confirmed')">
+            <span class="material-symbols-outlined">verified</span>確定シフト
+          </button>
+          <button class="tab-btn" id="tab-btn-desired" onclick="switchMyShiftTab('desired')">
+            <span class="material-symbols-outlined">event_note</span>提出した希望
+          </button>
+        </div>
+        <!-- カレンダーエリア (提出・閲覧・管理者で共通使用) -->
+        <div class="calendar-card" id="calendar-area">
+          <div class="calendar-header">
+            <div class="month-nav">
+              <button class="icon-btn" onclick="changeMonth(-1)" aria-label="前月">
+                <span class="material-symbols-outlined">chevron_left</span>
+              </button>
+              <h2 id="calendar-title">2026年6月</h2>
+              <button class="icon-btn" onclick="changeMonth(1)" aria-label="翌月">
+                <span class="material-symbols-outlined">chevron_right</span>
+              </button>
+            </div>
+            <!-- 表示形式の切り替え (全体シフト / 管理者用) -->
+            <div class="view-toggle" id="view-toggle-area" style="display:none;">
+              <button class="view-toggle-btn active" id="view-btn-cal" onclick="switchCalendarView('calendar')">
+                <span class="material-symbols-outlined" style="font-size:1.1rem;">calendar_view_month</span>カレンダー
+              </button>
+              <button class="view-toggle-btn" id="view-btn-matrix" onclick="switchCalendarView('matrix')">
+                <span class="material-symbols-outlined" style="font-size:1.1rem;">table_chart</span>表
+              </button>
+            </div>
+          </div>
+          
+          <!-- マトリクス表示エリア -->
+          <div id="matrix-area" class="matrix-table-container" style="display:none;">
+            <table class="matrix-table" id="matrix-table">
+              <!-- JSでヘッダー・ボディを描画 -->
+              <thead><tr id="matrix-header-row"></tr></thead>
+              <tbody id="matrix-body"></tbody>
+            </table>
+          </div>
+          <div class="calendar-grid">
+            <div class="calendar-header-row">
+              <div class="day-name text-red" style="color:var(--c-red);">日</div>
+              <div class="day-name">月</div>
+              <div class="day-name">火</div>
+              <div class="day-name">水</div>
+              <div class="day-name">木</div>
+              <div class="day-name">金</div>
+              <div class="day-name text-blue" style="color:var(--c-blue);">土</div>
+            </div>
+            <div id="calendar-body" class="calendar-body-grid"></div>
+          </div>
+        </div>
+        <!-- 管理者: 日付ごとの希望者/確定者詳細表示パネル -->
+        <div id="admin-daily-panel" class="admin-daily-detail-panel" style="display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+            <h3 id="admin-daily-date-title" style="margin:0; font-weight:800;"></h3>
+            <span style="font-size:0.8rem; color:var(--c-text-muted);">名前をタップしてシフトを登録・編集</span>
+          </div>
+          <div id="admin-daily-workers-list" class="admin-worker-list">
+            <!-- JSで従業員リストを描画 -->
+          </div>
+        </div>
+      </main>
+      <!-- ==========================================
+           右サイドパネル ＆ スマホ用ボトムシート (提出・マイシフト共通)
+      ========================================== -->
+      <div id="right-panel-overlay" class="overlay" onclick="closeBottomSheet()"></div>
+      <aside class="right-panel" id="right-panel">
+        <div class="bottom-sheet-handle"></div>
+        
+        <!-- [従業員:希望提出用] 一括入力フォーム -->
+        <div class="panel-section input-section" id="input-section">
+          <h3 style="margin-top:0; font-weight:800; margin-bottom:0.5rem; font-size:1rem;">選択した日付に一括入力</h3>
+          <div class="selected-count-display">
+            選択中: <span id="selected-count">0</span> 日
+          </div>
+          
+          <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; cursor:pointer; width:fit-content;">
+            <input type="checkbox" id="input-free" style="width:auto; transform:scale(1.2); cursor:pointer;" onchange="toggleInputTime()">
+            <span style="margin:0; color:var(--c-primary); font-size:0.9rem;">フリー（どの時間でも入れる）</span>
+          </label>
+          
+          <div class="form-row" id="input-time-row">
+            <div class="form-group half">
+              <label>出勤時間</label>
+              <select id="input-start"></select>
+            </div>
+            <div class="form-group half">
+              <label>退勤時間（任意）</label>
+              <select id="input-end">
+                <option value="">指定なし</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>メモ（任意）</label>
+            <input type="text" id="input-memo" placeholder="例: 18時までなら可">
+          </div>
+          
+          <button class="btn-add" id="btn-batch-add" onclick="applyBatchInput()" disabled>
+            <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">add_circle</span>
+            一括入力する
+          </button>
+        </div>
+        <!-- [従業員:マイシフト確定用] 確定シフトの詳細情報表示 -->
+        <div class="panel-section" id="confirmed-detail-section" style="display:none;">
+          <h3 style="margin-top:0; font-weight:800; margin-bottom:1rem; font-size:1rem;" id="confirmed-detail-title">日付を選択してください</h3>
+          <div id="confirmed-detail-content">
+            <div class="empty-msg">
+              <span class="material-symbols-outlined" style="font-size:2rem; display:block; margin-bottom:0.5rem; opacity:0.4;">touch_app</span>
+              カレンダーの日付をタップすると<br>ここに詳細が表示されます
+            </div>
+          </div>
+        </div>
+        <!-- [管理者用] 設定・締切フォーム -->
+        <div class="panel-section" id="admin-settings-section" style="display:none;">
+          <h3 style="margin-top:0; font-weight:800; margin-bottom:1rem; font-size:1rem;">システム設定</h3>
+          <div class="form-group">
+            <label>シフト提出締切日</label>
+            <select id="setting-deadline-day" onchange="changeDeadlineDaySetting()">
+              <!-- 1〜28日まで生成 -->
+            </select>
+            <span style="font-size:0.75rem; color:var(--c-text-muted); display:block; margin-top:0.5rem; line-height:1.6;">
+              この日付を過ぎると翌月のシフト希望提出・変更ができなくなります。
+            </span>
+          </div>
+        </div>
+        <!-- 提出・確認リスト一覧 -->
+        <div class="panel-section list-section" id="list-section">
+          <h3 id="list-title" style="margin-top:0; font-weight:800; font-size:1rem;">希望リスト</h3>
+          <div id="requests-list" class="requests-list">
+            <div class="empty-msg">
+              <span class="material-symbols-outlined" style="font-size:2rem; display:block; margin-bottom:0.5rem; opacity:0.4;">calendar_add_on</span>
+              カレンダーから日付を選択して<br>追加してください
+            </div>
+          </div>
+        </div>
+      </aside>
+      <!-- スマホ用フローティング編集ボタン (提出画面でのみ使用) -->
+      <button class="fab-btn" id="fab-btn" onclick="openBottomSheet()" aria-label="入力フォームを開く">
+        <span class="material-symbols-outlined">edit</span>
+      </button>
+    </div>
+    <?!= include('js'); ?>
+  </body>
+</html>
