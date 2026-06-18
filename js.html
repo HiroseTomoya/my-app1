@@ -1,0 +1,1565 @@
+<script>
+  // =========================================
+  // 状態管理
+  // =========================================
+  let currentYear = new Date().getFullYear();
+  let currentMonth = new Date().getMonth() + 1;
+  let currentMode = 'view'; // 'submit', 'view', 'allshift', 'admin'
+  let activeMyShiftTab = 'confirmed'; // 'confirmed', 'desired'
+  let currentStaffId = null;
+  let currentStaffName = null;
+  let currentStaffRole = null; // '一般' or '管理者'
+  let currentStaffDefaultPosition = null;
+  const selectedDates = new Set();
+  const shiftRequests = new Map();    // 従業員の希望提出用 (dateStr -> {start, end, memo})
+  const confirmedShifts = new Map();  // 個人の確定シフト (dateStr -> {start, end, restMinutes, position})
+  const monthlyAllShifts = new Map(); // 全員の確定シフト (dateStr -> [{userId, name, start, end, position}])
+  const holidays = new Map();         // 祝日データ (dateStr -> holidayName)
+  // 管理者編集用 (userId -> { shifts: { day -> {start, end, restMinutes, position} } })
+  let adminStaffData = [];
+  let selectedAdminDate = null;
+  let systemDeadlineDay = 20;
+  let isDeadlineLocked = false; // 提出期限ロック状態
+  let hasUnsavedChanges = false; // 希望提出の未保存状態を追跡
+  let currentCalendarView = 'calendar'; // 'calendar' or 'matrix'
+  // 15分単位の時間リスト
+  const timeOptions = [];
+  for (let h = 0; h < 29; h++) { // 0:00 ~ 28:45 (翌日04:45まで対応)
+    const hh = String(h < 24 ? h : h).padStart(2, '0');
+    for (let m = 0; m < 60; m += 15) {
+      const mm = String(m).padStart(2, '0');
+      timeOptions.push(`${hh}:${mm}`);
+    }
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    initTimeDropdowns();
+    initDeadlineDropdown();
+    // Enterキーでログイン
+    document.getElementById('login-password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleLogin();
+    });
+    document.getElementById('login-staff-id').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('login-password').focus();
+    });
+    checkAutoLogin();
+  });
+  // =========================================
+  // 初期化
+  // =========================================
+  function initTimeDropdowns() {
+    const ids = ['input-start', 'admin-edit-start', 'input-end', 'admin-edit-end', 'admin-edit-rest-start', 'admin-edit-rest-end'];
+    const defaultStart = '17:00';
+    ids.forEach(id => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      // 既存の「指定なし」「休み」オプション等は残しつつ時間リストを追加するため、一旦中身のオプション要素以外のテキストをクリア
+      // しかし、既にHTMLに<option value="">指定なし</option>が書いてあるので、innerHTML=''にすると消えてしまう。
+      // なので、idごとに初期設定を行う
+      if (id === 'input-start' || id === 'admin-edit-start') {
+        sel.innerHTML = '';
+        if (id === 'admin-edit-start') {
+          const optOff = document.createElement('option');
+          optOff.value = '休み';
+          optOff.textContent = '休み（シフトなし）';
+          sel.appendChild(optOff);
+        }
+      } else {
+        sel.innerHTML = '<option value="">指定なし</option>';
+      }
+      timeOptions.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        if (t === defaultStart) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }
+  function initDeadlineDropdown() {
+    const sel = document.getElementById('setting-deadline-day');
+    if (!sel) return;
+    sel.innerHTML = '';
+    for (let d = 1; d <= 28; d++) {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = `毎月 ${d} 日`;
+      if (d === 20) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  // =========================================
+  // 認証
+  // =========================================
+  async function sha256(ascii) {
+    if (window.crypto && window.crypto.subtle) {
+      try {
+        const msgBuffer = new TextEncoder().encode(ascii);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch(e) {}
+    }
+    // Lightweight Pure JS SHA-256 fallback for environments where crypto.subtle is unavailable
+    function rightRotate(value, amount) { return (value>>>amount) | (value<<(32 - amount)); };
+    var mathPow = Math.pow, maxWord = mathPow(2, 32), lengthProperty = 'length', i, j, result = '';
+    var words = [], asciiBitLength = ascii[lengthProperty]*8, hash = sha256.h = sha256.h || [], k = sha256.k = sha256.k || [];
+    var primeCounter = k[lengthProperty], isComposite = {};
+    for (var candidate = 2; primeCounter < 64; candidate++) {
+      if (!isComposite[candidate]) {
+        for (i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+        hash[primeCounter] = (mathPow(candidate, .5)*maxWord)|0;
+        k[primeCounter++] = (mathPow(candidate, 1/3)*maxWord)|0;
+      }
+    }
+    ascii += '\x80';
+    while (ascii[lengthProperty]%64 - 56) ascii += '\x00';
+    for (i = 0; i < ascii[lengthProperty]; i++) {
+      j = ascii.charCodeAt(i);
+      if (j>>8) return; 
+      words[i>>2] |= j << ((3 - i)%4)*8;
+    }
+    words[words[lengthProperty]] = ((asciiBitLength/maxWord)|0);
+    words[words[lengthProperty]] = (asciiBitLength);
+    for (j = 0; j < words[lengthProperty];) {
+      var w = words.slice(j, j += 16), oldHash = hash;
+      hash = hash.slice(0, 8);
+      for (i = 0; i < 64; i++) {
+        var w15 = w[i - 15], w2 = w[i - 2];
+        var a = hash[0], e = hash[4];
+        var temp1 = hash[7] + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) + ((e&hash[5])^((~e)&hash[6])) + k[i] + (w[i] = (i < 16) ? w[i] : (w[i - 16] + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15>>>3)) + w[i - 7] + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2>>>10)))|0);
+        var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) + ((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+        hash = [(temp1 + temp2)|0].concat(hash);
+        hash[4] = (hash[4] + temp1)|0;
+      }
+      for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i])|0;
+    }
+    for (i = 0; i < 8; i++) {
+      for (j = 3; j + 1; j--) {
+        var b = (hash[i]>>(j*8))&255;
+        result += ((b < 16) ? 0 : '') + b.toString(16);
+      }
+    }
+    return result;
+  }
+  function checkAutoLogin() {
+    const savedId   = localStorage.getItem('shift_app_staff_id');
+    const savedName = localStorage.getItem('shift_app_staff_name');
+    const savedRole = localStorage.getItem('shift_app_staff_role');
+    const savedPos  = localStorage.getItem('shift_app_staff_default_position');
+    if (savedId && savedName) {
+      currentStaffId = savedId;
+      currentStaffName = savedName;
+      currentStaffRole = savedRole || '一般';
+      currentStaffDefaultPosition = savedPos || 'ホール';
+      finishLogin();
+    }
+  }
+  async function handleLogin() {
+    const staffId = document.getElementById('login-staff-id').value.trim();
+    const pwd     = document.getElementById('login-password').value;
+    const err     = document.getElementById('login-error');
+    const btn     = document.getElementById('login-btn');
+    err.textContent = '';
+    if (!staffId) { err.textContent = 'ユーザーIDを入力してください。'; return; }
+    if (!pwd)     { err.textContent = 'パスワードを入力してください。'; return; }
+    btn.disabled = true;
+    btn.textContent = '認証中...';
+    const pwdHash = await sha256(pwd);
+    if (typeof google === 'undefined') {
+      // デモ用ローカルモック
+      const demoUsers = {
+        '001': { hash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', name: '山田 太郎', role: '一般', pos: 'キッチン' },
+        '002': { hash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', name: '佐藤 花子', role: '一般', pos: 'ホール' },
+        '003': { hash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', name: '鈴木 一郎', role: '一般', pos: 'リーダー' },
+        'admin': { hash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08', name: '管理者', role: '管理者', pos: '社員' },
+      };
+      const user = demoUsers[staffId];
+      if (user && user.hash === pwdHash) {
+        setLoginSession(staffId, user.name, user.role, user.pos);
+        finishLogin();
+      } else {
+        err.textContent = 'ユーザーIDまたはパスワードが正しくありません。';
+        btn.disabled = false;
+        btn.textContent = 'ログイン';
+      }
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.success) {
+          setLoginSession(res.staff.id, res.staff.name, res.staff.role, res.staff.defaultPosition);
+          finishLogin();
+        } else {
+          err.textContent = res.message;
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle;">login</span> ログイン';
+        }
+      })
+      .withFailureHandler(e => {
+        err.textContent = 'エラーが発生しました。しばらくしてから再試行してください。';
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle;">login</span> ログイン';
+      })
+      .authenticateStaff(staffId, pwdHash);
+  }
+  function setLoginSession(id, name, role, pos) {
+    currentStaffId = id;
+    currentStaffName = name;
+    currentStaffRole = role;
+    currentStaffDefaultPosition = pos;
+    localStorage.setItem('shift_app_staff_id', id);
+    localStorage.setItem('shift_app_staff_name', name);
+    localStorage.setItem('shift_app_staff_role', role);
+    localStorage.setItem('shift_app_staff_default_position', pos);
+  }
+  function logout() {
+    localStorage.removeItem('shift_app_staff_id');
+    localStorage.removeItem('shift_app_staff_name');
+    localStorage.removeItem('shift_app_staff_role');
+    localStorage.removeItem('shift_app_staff_default_position');
+    currentStaffId = currentStaffName = currentStaffRole = currentStaffDefaultPosition = null;
+    document.getElementById('login-staff-id').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-error').textContent = '';
+    const btn = document.getElementById('login-btn');
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle;">login</span> ログイン';
+    document.getElementById('app-container').style.display = 'none';
+    document.getElementById('login-modal').classList.add('show');
+  }
+  function finishLogin() {
+    document.getElementById('login-modal').classList.remove('show');
+    document.getElementById('app-container').style.display = 'flex';
+    document.getElementById('sidebar-user-name').textContent = currentStaffName;
+    document.getElementById('sidebar-avatar').textContent = currentStaffName.charAt(0);
+    if (currentStaffRole === '管理者') {
+      document.getElementById('nav-admin-li').style.display = 'block';
+      document.getElementById('nav-section-admin').style.display = 'block';
+      switchMode('admin');
+    } else {
+      document.getElementById('nav-admin-li').style.display = 'none';
+      document.getElementById('nav-section-admin').style.display = 'none';
+      switchMode('view');
+    }
+  }
+  // =========================================
+  // カレンダー制御
+  // =========================================
+  function changeMonth(delta) {
+    currentMonth += delta;
+    if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+    else if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+    selectedDates.clear();
+    refreshData();
+  }
+  function switchCalendarView(viewType) {
+    currentCalendarView = viewType;
+    document.getElementById('view-btn-cal').classList.toggle('active', viewType === 'calendar');
+    document.getElementById('view-btn-matrix').classList.toggle('active', viewType === 'matrix');
+    
+    if (viewType === 'calendar') {
+      document.querySelector('.calendar-grid').style.display = 'block';
+      document.getElementById('matrix-area').style.display = 'none';
+    } else {
+      document.querySelector('.calendar-grid').style.display = 'none';
+      document.getElementById('matrix-area').style.display = 'block';
+      renderMatrix();
+    }
+  }
+  function handlePeriodChange() {
+    selectedDates.clear();
+    updateBatchInputUI();
+    renderCalendar();
+    if (currentMode === 'admin') loadAdminDesiredShifts();
+  }
+  function setLoadingState(isLoading) {
+    const calCard = document.getElementById('calendar-area');
+    const matrixArea = document.getElementById('matrix-area');
+    if (isLoading) {
+      calCard.style.opacity = '0.5';
+      calCard.style.pointerEvents = 'none';
+      matrixArea.style.opacity = '0.5';
+      matrixArea.style.pointerEvents = 'none';
+    } else {
+      calCard.style.opacity = '1';
+      calCard.style.pointerEvents = 'auto';
+      matrixArea.style.opacity = '1';
+      matrixArea.style.pointerEvents = 'auto';
+    }
+  }
+  function refreshData() {
+    renderCalendar(); // 画面遷移を速く見せるため即座に再描画
+    loadHolidays(() => {
+      if      (currentMode === 'view')     loadConfirmedShifts();
+      else if (currentMode === 'submit')   loadSavedShiftRequests();
+      else if (currentMode === 'allshift') loadMonthlyAllShifts();
+      else if (currentMode === 'admin')    loadAdminDesiredShifts();
+    });
+  }
+  // =========================================
+  // 祝日の読み込み
+  // =========================================
+  function loadHolidays(callback) {
+    holidays.clear();
+    if (typeof google === 'undefined') {
+      // デモ用祝日
+      const demoHolidays = {
+        '2026-01-01':'元日','2026-01-12':'成人の日','2026-02-11':'建国記念の日',
+        '2026-03-20':'春分の日','2026-04-29':'昭和の日','2026-05-03':'憲法記念日',
+        '2026-05-04':'みどりの日','2026-05-05':'こどもの日','2026-07-20':'海の日',
+        '2026-08-11':'山の日','2026-09-21':'敬老の日','2026-09-23':'秋分の日',
+        '2026-10-12':'スポーツの日','2026-11-03':'文化の日','2026-11-23':'勤労感謝の日',
+      };
+      Object.entries(demoHolidays).forEach(([d, n]) => {
+        if (d.startsWith(`${currentYear}-${String(currentMonth).padStart(2,'0')}`)) {
+          holidays.set(d, n);
+        }
+      });
+      if (callback) callback();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        Object.keys(res).forEach(d => holidays.set(d, res[d]));
+        if (callback) callback();
+      })
+      .getHolidays(currentYear, currentMonth);
+  }
+  // =========================================
+  // カレンダー描画
+  // =========================================
+  function renderCalendar() {
+    document.getElementById('calendar-title').textContent = `${currentYear}年${currentMonth}月`;
+    const body     = document.getElementById('calendar-body');
+    body.innerHTML = '';
+    const today     = new Date();
+    const todayStr  = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const firstDay  = new Date(currentYear, currentMonth - 1, 1).getDay();
+    const lastDate  = new Date(currentYear, currentMonth, 0).getDate();
+    // 常に1ヶ月分を表示
+    let startDate = 1, endDate = lastDate;
+    
+    // 今日の日付から前半・後半を判定し、アクティブでない期間を視覚的に薄くする
+    const isFirstHalfActive = today.getDate() <= 15;
+
+    // カレンダーグリッドの先頭: 月初の曜日オフセット
+    let offsetDay = firstDay; 
+
+    for (let i = 0; i < offsetDay; i++) {
+      const empty = document.createElement('div');
+      empty.className = 'cal-cell empty';
+      body.appendChild(empty);
+    }
+    for (let i = 1; i <= lastDate; i++) {
+      const dateStr    = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+      const cell       = document.createElement('div');
+      cell.className   = 'cal-cell';
+      
+      // 前半・後半の視認性コントロール（提出・管理者モードのみ）
+      if (currentMode === 'submit' || currentMode === 'admin') {
+        const isCurrentCellFirstHalf = i <= 15;
+        if (isCurrentCellFirstHalf !== isFirstHalfActive) {
+          cell.style.opacity = '0.5'; // アクティブでない期間を薄くする
+        }
+      }
+
+      const dayOfWeek  = new Date(currentYear, currentMonth - 1, i).getDay();
+      const isHoliday  = holidays.has(dateStr);
+      const isToday    = (dateStr === todayStr);
+      const isSun      = dayOfWeek === 0;
+      const isSat      = dayOfWeek === 6;
+      if (isHoliday) cell.classList.add('holiday');
+      if (isToday)   cell.classList.add('today');
+      let dateNumClass = 'cell-date-num';
+      if (isSun || isHoliday) dateNumClass += ' text-red';
+      if (isSat)               dateNumClass += ' text-blue';
+      let innerHTML = `<div class="cell-date"><span class="${dateNumClass}">${i}</span></div>`;
+      if (isHoliday) {
+        innerHTML += `<div class="holiday-name-label">${holidays.get(dateStr)}</div>`;
+      }
+      // ===== モード別コンテンツ =====
+      if (currentMode === 'submit') {
+        const isInPeriod = true;
+        if (shiftRequests.has(dateStr)) {
+          const s = shiftRequests.get(dateStr);
+          cell.classList.add('has-shift');
+          const timeText = (s.start === 'フリー') ? 'フリー' : `${s.start}〜`;
+          innerHTML += `<div class="cell-shift">${timeText}</div>`;
+        }
+        if (selectedDates.has(dateStr)) cell.classList.add('selected');
+        cell.innerHTML = innerHTML;
+        if (isInPeriod && !isDeadlineLocked) {
+          cell.addEventListener('click', () => toggleDateSelection(dateStr, cell));
+        } else {
+          cell.style.cursor = 'default';
+        }
+      }
+      else if (currentMode === 'view') {
+        if (selectedDates.has(dateStr)) cell.classList.add('selected');
+        if (activeMyShiftTab === 'confirmed') {
+          if (confirmedShifts.has(dateStr)) {
+            const s = confirmedShifts.get(dateStr);
+            cell.classList.add('has-confirmed-shift');
+            const timeText = (s.start === 'フリー') ? 'フリー' : `${s.start}〜`;
+            innerHTML += `<div class="cell-shift">${timeText}</div>`;
+          }
+          cell.innerHTML = innerHTML;
+          cell.addEventListener('click', () => {
+            selectedDates.clear();
+            selectedDates.add(dateStr);
+            renderCalendar();
+            showConfirmedDetail(dateStr);
+          });
+        } else {
+          if (shiftRequests.has(dateStr)) {
+            const s = shiftRequests.get(dateStr);
+            cell.classList.add('has-shift');
+            const timeText = (s.start === 'フリー') ? 'フリー' : `${s.start}〜`;
+            innerHTML += `<div class="cell-shift">${timeText}</div>`;
+          }
+          cell.innerHTML = innerHTML;
+          cell.addEventListener('click', () => {
+            selectedDates.clear();
+            selectedDates.add(dateStr);
+            renderCalendar();
+            showDesiredDetail(dateStr);
+          });
+        }
+      }
+      else if (currentMode === 'allshift') {
+        const isMobile = window.innerWidth <= 900;
+        const members  = monthlyAllShifts.has(dateStr) ? monthlyAllShifts.get(dateStr) : [];
+        let badgesHtml = '<div class="cell-members-container">';
+        if (members.length > 0) {
+          const maxShow = isMobile ? 2 : 5;
+          members.slice(0, maxShow).forEach(m => {
+            badgesHtml += `<div class="cell-member-badge ${m.position}">${m.name}</div>`;
+          });
+          if (members.length > maxShow) {
+            badgesHtml += `<div class="cell-more-badge">+${members.length - maxShow}人</div>`;
+          }
+        }
+        badgesHtml += '</div>';
+        innerHTML += badgesHtml;
+        cell.innerHTML = innerHTML;
+        cell.addEventListener('click', () => openCoworkersModal(dateStr));
+      }
+      else if (currentMode === 'admin') {
+        const isInPeriod = true;
+        let desiredCount = 0, confirmedCount = 0;
+        if (adminStaffData.length > 0 && isInPeriod) {
+          adminStaffData.forEach(staff => {
+            const dayData = staff.shifts[i];
+            if (dayData && dayData.desired)   desiredCount++;
+            if (dayData && dayData.confirmed) confirmedCount++;
+          });
+        }
+        if (isInPeriod && desiredCount > 0) {
+          innerHTML += `<div class="cell-desired-count">${desiredCount}人希望</div>`;
+        }
+        if (isInPeriod && confirmedCount > 0) {
+          innerHTML += `<div class="cell-confirmed-count">✓ ${confirmedCount}人確定</div>`;
+        }
+        cell.innerHTML = innerHTML;
+        if (isInPeriod) {
+          cell.addEventListener('click', () => showAdminDailyPanel(i, dateStr));
+          if (selectedAdminDate === dateStr) cell.classList.add('selected');
+        } else {
+          cell.style.cursor = 'default';
+        }
+      }
+      body.appendChild(cell);
+    }
+    
+    if (currentCalendarView === 'matrix' && (currentMode === 'allshift' || currentMode === 'admin')) {
+      renderMatrix();
+    }
+  }
+  
+  // =========================================
+  // マトリクス描画
+  // =========================================
+  function renderMatrix() {
+    const thead = document.getElementById('matrix-header-row');
+    const tbody = document.getElementById('matrix-body');
+    thead.innerHTML = '<th class="matrix-name-col">名前</th>';
+    tbody.innerHTML = '';
+    
+    const lastDate = new Date(currentYear, currentMonth, 0).getDate();
+    const dayNames = ['日','月','火','水','木','金','土'];
+    
+    // ヘッダー作成 (1日〜末日)
+    for (let i = 1; i <= lastDate; i++) {
+      const dayOfWeek = new Date(currentYear, currentMonth - 1, i).getDay();
+      const isSun = dayOfWeek === 0;
+      const isSat = dayOfWeek === 6;
+      let colorStyle = '';
+      if (isSun) colorStyle = 'color:var(--c-red);';
+      if (isSat) colorStyle = 'color:var(--c-blue);';
+      thead.innerHTML += `<th style="${colorStyle}">${i} <span style="font-size:0.7rem;opacity:0.8;">${dayNames[dayOfWeek]}</span></th>`;
+    }
+    
+    // 役職グループ定義
+    const groups = ['社員', 'ホール', 'キッチン'];
+    
+    if (currentMode === 'admin') {
+      if (!adminStaffData || adminStaffData.length === 0) return;
+      
+      // グループごとにスタッフを分類
+      const staffByGroup = { '社員': [], 'ホール': [], 'キッチン': [], 'その他': [] };
+      adminStaffData.forEach(staff => {
+        const pos = staff.defaultPosition;
+        if (staff.role === '管理者' || staff.role === '社員' || pos === '社員') {
+          staffByGroup['社員'].push(staff);
+        } else if (pos === 'ホール') {
+          staffByGroup['ホール'].push(staff);
+        } else if (pos === 'キッチン') {
+          staffByGroup['キッチン'].push(staff);
+        } else {
+          staffByGroup['その他'].push(staff);
+        }
+      });
+      
+      const renderStaffRow = (staff, staffIdx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="matrix-name-col">${staff.name}</td>`;
+        for (let i = 1; i <= lastDate; i++) {
+          const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+          const td = document.createElement('td');
+          td.className = 'matrix-cell-clickable';
+          
+          const dayData = staff.shifts[i] || {};
+          let cellHtml = '<div class="matrix-cell-content" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">';
+          
+          // 希望時間（小さく上に表示）
+          if (dayData.desired) {
+            cellHtml += `<div style="font-size:0.65rem; color:var(--c-text-muted); line-height:1;">(希)${dayData.desired.start}〜</div>`;
+          } else {
+            cellHtml += `<div style="font-size:0.65rem; color:transparent; line-height:1;">-</div>`;
+          }
+          
+          // 確定時間（大きく下に表示）
+          if (dayData.confirmed) {
+            if (dayData.confirmed.start === '休み' || dayData.confirmed.start === '') {
+              // 休みまたは空白
+              cellHtml += `<div style="font-size:0.9rem; font-weight:700; color:var(--c-text-muted); margin-top:0.2rem;">休み</div>`;
+            } else if (dayData.confirmed.start === 'フリー') {
+              cellHtml += `<div class="matrix-cell-free" style="margin-top:0.2rem;">フリー</div>`;
+            } else {
+              cellHtml += `<div class="matrix-cell-shift" style="margin-top:0.2rem;">${dayData.confirmed.start}〜</div>`;
+            }
+          } else {
+            // 未確定の場合は空白
+            cellHtml += `<div style="font-size:0.9rem; font-weight:700; color:transparent; margin-top:0.2rem;">-</div>`;
+          }
+          cellHtml += '</div>';
+          td.innerHTML = cellHtml;
+          
+          td.addEventListener('click', () => {
+            selectedAdminDate = dateStr;
+            openAdminEditModal(staffIdx, i, staff.name, dayData);
+          });
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      };
+      
+      ['社員', 'ホール', 'キッチン', 'その他'].forEach(grp => {
+        if (staffByGroup[grp].length > 0) {
+          const sep = document.createElement('tr');
+          sep.innerHTML = `<td colspan="${lastDate + 1}" style="background:hsl(210,40%,96%); font-weight:800; font-size:0.85rem; padding:0.4rem 1rem; color:var(--c-text-muted);">【${grp}】</td>`;
+          tbody.appendChild(sep);
+          staffByGroup[grp].forEach(staff => renderStaffRow(staff, adminStaffData.indexOf(staff)));
+        }
+      });
+      
+    } else if (currentMode === 'allshift') {
+      // 確定シフトからユニークなスタッフリストを作成し、グループ分け
+      const staffMap = new Map();
+      monthlyAllShifts.forEach((shifts, dateStr) => {
+        const day = parseInt(dateStr.split('-')[2]);
+        shifts.forEach(s => {
+          if (!staffMap.has(s.name)) {
+            staffMap.set(s.name, { position: s.position, shifts: {} });
+          }
+          staffMap.get(s.name).shifts[day] = s.start;
+        });
+      });
+      
+      const staffByGroup = { '社員': [], 'ホール': [], 'キッチン': [], 'その他': [] };
+      staffMap.forEach((data, name) => {
+        const pos = data.position;
+        if (pos === '社員' || pos === 'リーダー' || pos === '管理者') {
+          staffByGroup['社員'].push({name, ...data});
+        } else if (pos === 'ホール') {
+          staffByGroup['ホール'].push({name, ...data});
+        } else if (pos === 'キッチン') {
+          staffByGroup['キッチン'].push({name, ...data});
+        } else {
+          staffByGroup['その他'].push({name, ...data});
+        }
+      });
+      
+      const renderAllShiftRow = (staffData) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="matrix-name-col">${staffData.name}</td>`;
+        for (let i = 1; i <= lastDate; i++) {
+          const td = document.createElement('td');
+          const start = staffData.shifts[i];
+          if (start && start !== '休み') {
+            if (start === 'フリー') {
+              td.innerHTML = '<span class="matrix-cell-free">フリー</span>';
+            } else {
+              td.innerHTML = `<span class="matrix-cell-shift">${start}〜</span>`;
+            }
+          }
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      };
+      
+      ['社員', 'ホール', 'キッチン', 'その他'].forEach(grp => {
+        if (staffByGroup[grp].length > 0) {
+          const sep = document.createElement('tr');
+          sep.innerHTML = `<td colspan="${lastDate + 1}" style="background:hsl(210,40%,96%); font-weight:800; font-size:0.85rem; padding:0.4rem 1rem; color:var(--c-text-muted);">【${grp}】</td>`;
+          tbody.appendChild(sep);
+          staffByGroup[grp].forEach(renderAllShiftRow);
+        }
+      });
+    }
+  }
+
+  // =========================================
+  // 従業員用：日付選択
+  // =========================================
+  function toggleDateSelection(dateStr, cell) {
+    if (selectedDates.has(dateStr)) {
+      selectedDates.delete(dateStr);
+      cell.classList.remove('selected');
+    } else {
+      selectedDates.add(dateStr);
+      cell.classList.add('selected');
+    }
+    updateBatchInputUI();
+  }
+  function updateBatchInputUI() {
+    const count = selectedDates.size;
+    document.getElementById('selected-count').textContent = count;
+    document.getElementById('btn-batch-add').disabled = count === 0;
+  }
+  // =========================================
+  // 従業員用：希望提出・一括入力
+  // =========================================
+  function loadSavedShiftRequests() {
+    shiftRequests.clear();
+    renderCalendar();
+    setLoadingState(true);
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    if (typeof google === 'undefined') {
+      // デモデータ
+      shiftRequests.set(`${targetMonth}-03`, { start:'17:00', end:'22:00', memo:'' });
+      shiftRequests.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', memo:'テスト' });
+      shiftRequests.set(`${targetMonth}-10`, { start:'18:00', end:'23:00', memo:'' });
+      hasUnsavedChanges = false;
+      updateSubmitButtonState();
+      renderCalendar();
+      renderRequestList();
+      setLoadingState(false);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        Object.keys(res).forEach(d => shiftRequests.set(d, res[d]));
+        hasUnsavedChanges = false;
+        updateSubmitButtonState();
+        renderCalendar();
+        renderRequestList();
+        setLoadingState(false);
+      })
+      .withFailureHandler(() => setLoadingState(false))
+      .getSavedShiftRequests(currentStaffId, targetMonth);
+  }
+  function toggleInputTime() {
+    const isFree = document.getElementById('input-free').checked;
+    const timeRow = document.getElementById('input-time-row');
+    if (isFree) {
+      timeRow.style.opacity = '0.3';
+      timeRow.style.pointerEvents = 'none';
+    } else {
+      timeRow.style.opacity = '1';
+      timeRow.style.pointerEvents = 'auto';
+    }
+  }
+  function applyBatchInput() {
+    if (selectedDates.size === 0) return;
+    const isFree = document.getElementById('input-free').checked;
+    let start, end;
+    if (isFree) {
+      start = 'フリー';
+      end = '';
+    } else {
+      start = document.getElementById('input-start').value;
+      end   = document.getElementById('input-end').value;
+      if (!start) { showToast('開始時間を指定してください。', 'error'); return; }
+    }
+    const memo  = document.getElementById('input-memo').value.trim();
+    selectedDates.forEach(dateStr => shiftRequests.set(dateStr, { start, end, memo }));
+    selectedDates.clear();
+    hasUnsavedChanges = true;
+    updateSubmitButtonState();
+    renderCalendar();
+    renderRequestList();
+    updateBatchInputUI();
+    showToast(`${shiftRequests.size}件入力しました`);
+    if (window.innerWidth <= 900) closeBottomSheet();
+  }
+  function removeRequest(dateStr) {
+    shiftRequests.delete(dateStr);
+    hasUnsavedChanges = true;
+    updateSubmitButtonState();
+    renderCalendar();
+    renderRequestList();
+  }
+  function updateSubmitButtonState() {
+    const btn = document.getElementById('btn-save-gas');
+    if (!btn) return;
+    if (hasUnsavedChanges) {
+      btn.style.opacity = '1';
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined">send</span>希望を提出する';
+    } else {
+      btn.style.opacity = '0.5';
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-outlined">check_circle</span>提出済み・変更なし';
+    }
+  }
+  function renderRequestList() {
+    const listContainer = document.getElementById('requests-list');
+    listContainer.innerHTML = '';
+    let dataSource;
+    if (currentMode === 'submit') {
+      dataSource = shiftRequests;
+    } else if (activeMyShiftTab === 'confirmed') {
+      dataSource = confirmedShifts;
+    } else {
+      dataSource = shiftRequests;
+    }
+    if (dataSource.size === 0) {
+      listContainer.innerHTML = `<div class="empty-msg">
+        <span class="material-symbols-outlined" style="font-size:2rem; display:block; margin-bottom:0.5rem; opacity:0.4;">${currentMode === 'submit' ? 'calendar_add_on' : 'event_busy'}</span>
+        ${currentMode === 'submit' ? 'カレンダーから日付を選択して<br>追加してください' : 'この月のデータはありません'}
+      </div>`;
+      return;
+    }
+    const sortedDates = Array.from(dataSource.keys()).sort();
+    sortedDates.forEach(dateStr => {
+      const shift = dataSource.get(dateStr);
+      const [, m, d] = dateStr.split('-');
+      const dayNames = ['日','月','火','水','木','金','土'];
+      const dayName  = dayNames[new Date(dateStr).getDay()];
+      const item = document.createElement('div');
+      item.className = 'request-item';
+      if (currentMode === 'submit') {
+        item.innerHTML = `
+          <div class="req-date">${parseInt(m)}/${parseInt(d)}<span style="font-size:0.7rem;color:var(--c-text-muted);margin-left:2px;">${dayName}</span></div>
+          <div class="req-time">${shift.start}〜${shift.end}</div>
+          <button class="btn-remove" onclick="removeRequest('${dateStr}')" aria-label="削除">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">close</span>
+          </button>
+        `;
+      } else {
+        const isConf = (activeMyShiftTab === 'confirmed');
+        item.innerHTML = `
+          <div class="req-date">${parseInt(m)}/${parseInt(d)}<span style="font-size:0.7rem;color:var(--c-text-muted);margin-left:2px;">${dayName}</span></div>
+          <div class="req-time" style="${isConf ? 'background:var(--c-primary-light);color:var(--c-primary);' : 'background:var(--c-red-light);color:var(--c-red);border-color:hsl(350,80%,90%);'}">${shift.start}〜${shift.end}</div>
+        `;
+      }
+      listContainer.appendChild(item);
+    });
+  }
+  // =========================================
+  // 提出確認モーダル
+  // =========================================
+  function openSubmitConfirmModal() {
+    if (!currentStaffId) { showToast('ログインしていません。', 'error'); return; }
+    if (shiftRequests.size === 0) { showToast('希望シフトが入力されていません。', 'error'); return; }
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const [y, mo] = targetMonth.split('-');
+    document.getElementById('submit-confirm-subtitle').textContent =
+      `${y}年${parseInt(mo)}月の希望シフト（${shiftRequests.size}件）を送信します`;
+    const listEl = document.getElementById('submit-confirm-list');
+    listEl.innerHTML = '';
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const sortedDates = Array.from(shiftRequests.keys()).sort();
+    sortedDates.forEach(dateStr => {
+      const shift = shiftRequests.get(dateStr);
+      const [, m, d] = dateStr.split('-');
+      const dayName = dayNames[new Date(dateStr).getDay()];
+      const div = document.createElement('div');
+      div.className = 'confirm-modal-item';
+      div.innerHTML = `
+        <span class="confirm-modal-date">${parseInt(m)}月${parseInt(d)}日（${dayName}）</span>
+        <span class="confirm-modal-time">${shift.start} 〜 ${shift.end}${shift.memo ? ' ・ ' + shift.memo : ''}</span>
+      `;
+      listEl.appendChild(div);
+    });
+    document.getElementById('submit-confirm-modal').classList.add('show');
+  }
+  function closeSubmitConfirmModal() {
+    document.getElementById('submit-confirm-modal').classList.remove('show');
+  }
+  function executeSubmit() {
+    closeSubmitConfirmModal();
+    saveToGas();
+  }
+  function saveToGas() {
+    if (!currentStaffId) { showToast('ログインしていません。', 'error'); return; }
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const payload = {
+      staffId: currentStaffId,
+      targetMonth: targetMonth,
+      shifts: Array.from(shiftRequests.entries()).map(([date, data]) => ({ date, ...data }))
+    };
+    const btnSave = document.getElementById('btn-save-gas');
+    const origHtml = btnSave.innerHTML;
+    btnSave.innerHTML = '<span class="material-symbols-outlined" style="animation:spin 1s linear infinite;">sync</span> 送信中...';
+    btnSave.disabled = true;
+    if (typeof google === 'undefined') {
+      setTimeout(() => {
+        showToast('希望シフトを送信しました (デモ)');
+        btnSave.innerHTML = origHtml;
+        btnSave.disabled = false;
+      }, 900);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.success) {
+          showToast('シフト希望を提出しました！');
+          hasUnsavedChanges = false;
+          updateSubmitButtonState();
+        } else {
+          showToast('エラー: ' + res.message, 'error');
+        }
+        btnSave.innerHTML = origHtml;
+        btnSave.disabled = false;
+        refreshData();
+      })
+      .withFailureHandler(() => {
+        showToast('通信エラーが発生しました。', 'error');
+        btnSave.innerHTML = origHtml;
+        btnSave.disabled = false;
+      })
+      .submitShiftRequests(payload);
+  }
+  // =========================================
+  // 従業員用：確定シフト・マイシフト詳細
+  // =========================================
+  function loadConfirmedShifts() {
+    confirmedShifts.clear();
+    shiftRequests.clear();
+    renderCalendar();
+    setLoadingState(true);
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    if (typeof google === 'undefined') {
+      confirmedShifts.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', restMinutes:30, position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-06`, { start:'17:00', end:'23:00', restMinutes:45, position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-10`, { start:'18:00', end:'22:00', restMinutes:0,  position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-15`, { start:'11:00', end:'16:00', restMinutes:0,  position:'キッチン' });
+      shiftRequests.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', memo:'テスト' });
+      shiftRequests.set(`${targetMonth}-07`, { start:'17:00', end:'22:00', memo:'テスト' });
+      shiftRequests.set(`${targetMonth}-10`, { start:'18:00', end:'22:00', memo:'' });
+      renderCalendar();
+      renderRequestList();
+      setLoadingState(false);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(reqRes => {
+        Object.keys(reqRes).forEach(d => shiftRequests.set(d, reqRes[d]));
+        google.script.run
+          .withSuccessHandler(confRes => {
+            Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
+            renderCalendar();
+            renderRequestList();
+            setLoadingState(false);
+          })
+          .withFailureHandler(() => setLoadingState(false))
+          .getConfirmedShifts(currentStaffId, targetMonth);
+      })
+      .withFailureHandler(() => setLoadingState(false))
+      .getSavedShiftRequests(currentStaffId, targetMonth);
+  }
+  function buildDetailCardHtml(shift, isConfirmed) {
+    let workMinText = '';
+    if (shift.start && shift.end && shift.start !== 'フリー' && shift.start !== '休み') {
+      const [sh, sm] = shift.start.split(':').map(Number);
+      const [eh, em] = shift.end.split(':').map(Number);
+      let workMin = (eh * 60 + em) - (sh * 60 + sm);
+      if (isConfirmed && shift.restTime) {
+        const [rs, re] = shift.restTime.split('-');
+        if (rs && re) {
+          const [rsh, rsm] = rs.split(':').map(Number);
+          const [reh, rem] = re.split(':').map(Number);
+          workMin -= ((reh * 60 + rem) - (rsh * 60 + rsm));
+        }
+      }
+      if (workMin < 0) workMin = 0;
+      const wH = Math.floor(workMin / 60);
+      const wM = workMin % 60;
+      workMinText = `${wH}時間${wM > 0 ? wM + '分' : ''}`;
+    } else {
+      workMinText = '-';
+    }
+    
+    const timeDisplay = shift.start === 'フリー' ? 'フリー' : (shift.start === '休み' ? '休み' : `${shift.start}${shift.end ? ' 〜 ' + shift.end : '〜'}`);
+    
+    if (isConfirmed) {
+      return `
+        <div class="confirmed-detail-card">
+          <div class="confirmed-detail-row">
+            <span class="confirmed-detail-label">勤務時間</span>
+            <span class="confirmed-detail-val">${timeDisplay}</span>
+          </div>
+          <div class="confirmed-detail-row">
+            <span class="confirmed-detail-label">休憩時間</span>
+            <span class="confirmed-detail-val">${shift.restTime ? shift.restTime : 'なし'}</span>
+          </div>
+          <div class="confirmed-detail-row">
+            <span class="confirmed-detail-label">実働時間目安</span>
+            <span class="confirmed-detail-val" style="color:var(--c-primary);">${workMinText}</span>
+          </div>
+          <div class="confirmed-detail-row">
+            <span class="confirmed-detail-label">ポジション</span>
+            <span class="confirmed-detail-val"><span class="pos-badge ${shift.position}">${shift.position}</span></span>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="confirmed-detail-card" style="border-color:hsl(350,80%,85%); background:var(--c-red-light);">
+          <div class="confirmed-detail-row">
+            <span class="confirmed-detail-label" style="color:var(--c-red);">希望時間</span>
+            <span class="confirmed-detail-val" style="color:var(--c-red);">${timeDisplay}</span>
+          </div>
+          <div class="confirmed-detail-row" style="border-bottom:none;">
+            <span class="confirmed-detail-label">メモ</span>
+            <span class="confirmed-detail-val">${shift.memo || 'なし'}</span>
+          </div>
+        </div>
+      `;
+    }
+  }
+  function showConfirmedDetail(dateStr) {
+    const [, m, d] = dateStr.split('-');
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const dayName  = dayNames[new Date(dateStr).getDay()];
+    const titleTxt = `${parseInt(m)}月${parseInt(d)}日（${dayName}）の確定シフト`;
+    if (window.innerWidth <= 900) {
+      // スマホ: モーダル表示
+      document.getElementById('shift-detail-modal-title').textContent = titleTxt;
+      const body = document.getElementById('shift-detail-modal-body');
+      if (!confirmedShifts.has(dateStr)) {
+        body.innerHTML = '<div class="empty-msg">この日は確定シフトが入っていません。</div>';
+      } else {
+        const shift = confirmedShifts.get(dateStr);
+        body.innerHTML = buildDetailCardHtml(shift, true) + `
+          <button class="btn-secondary" style="margin-top:0.75rem;" onclick="closeShiftDetailModal(); openCoworkersModal('${dateStr}')">
+            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:1rem; margin-right:4px;">groups</span>同日の出勤メンバーを見る
+          </button>
+        `;
+      }
+      document.getElementById('shift-detail-modal').classList.add('show');
+    } else {
+      // PC: 右パネル表示
+      document.getElementById('confirmed-detail-title').textContent = titleTxt;
+      const content = document.getElementById('confirmed-detail-content');
+      if (!confirmedShifts.has(dateStr)) {
+        content.innerHTML = '<div class="empty-msg">この日は確定シフトが入っていません。</div>';
+      } else {
+        const shift = confirmedShifts.get(dateStr);
+        content.innerHTML = buildDetailCardHtml(shift, true) + `
+          <button class="btn-secondary" style="margin-top:0.75rem;" onclick="openCoworkersModal('${dateStr}')">
+            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:1rem; margin-right:4px;">groups</span>同日の出勤メンバーを見る
+          </button>
+        `;
+      }
+    }
+  }
+  function showDesiredDetail(dateStr) {
+    const [, m, d] = dateStr.split('-');
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const dayName  = dayNames[new Date(dateStr).getDay()];
+    const titleTxt = `${parseInt(m)}月${parseInt(d)}日（${dayName}）の提出希望`;
+    if (window.innerWidth <= 900) {
+      document.getElementById('shift-detail-modal-title').textContent = titleTxt;
+      const body = document.getElementById('shift-detail-modal-body');
+      if (!shiftRequests.has(dateStr)) {
+        body.innerHTML = '<div class="empty-msg">この日は希望シフトを提出していません。</div>';
+      } else {
+        body.innerHTML = buildDetailCardHtml(shiftRequests.get(dateStr), false);
+      }
+      document.getElementById('shift-detail-modal').classList.add('show');
+    } else {
+      document.getElementById('confirmed-detail-title').textContent = titleTxt;
+      const content = document.getElementById('confirmed-detail-content');
+      if (!shiftRequests.has(dateStr)) {
+        content.innerHTML = '<div class="empty-msg">この日は希望シフトを提出していません。</div>';
+      } else {
+        content.innerHTML = buildDetailCardHtml(shiftRequests.get(dateStr), false);
+      }
+    }
+  }
+  function closeShiftDetailModal() {
+    document.getElementById('shift-detail-modal').classList.remove('show');
+  }
+  function switchMyShiftTab(tab) {
+    activeMyShiftTab = tab;
+    document.getElementById('tab-btn-confirmed').classList.toggle('active', tab === 'confirmed');
+    document.getElementById('tab-btn-desired').classList.toggle('active', tab === 'desired');
+    document.getElementById('confirmed-detail-content').innerHTML = `
+      <div class="empty-msg">
+        <span class="material-symbols-outlined" style="font-size:2rem; display:block; margin-bottom:0.5rem; opacity:0.4;">touch_app</span>
+        カレンダーの日付をタップすると<br>ここに詳細が表示されます
+      </div>`;
+    document.getElementById('confirmed-detail-title').textContent = '日付を選択してください';
+    renderCalendar();
+    renderRequestList();
+  }
+  // =========================================
+  // 全体シフト
+  // =========================================
+  function loadMonthlyAllShifts() {
+    monthlyAllShifts.clear();
+    renderCalendar();
+    setLoadingState(true);
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    if (typeof google === 'undefined') {
+      monthlyAllShifts.set(`${targetMonth}-01`, [
+        { name:'山田 太郎', position:'キッチン', start:'17:00', end:'22:00' },
+        { name:'佐藤 花子', position:'ホール',   start:'17:00', end:'22:00' },
+      ]);
+      monthlyAllShifts.set(`${targetMonth}-05`, [
+        { name:'山田 太郎', position:'キッチン', start:'17:00', end:'22:00' },
+        { name:'佐藤 花子', position:'ホール',   start:'18:00', end:'23:00' },
+        { name:'鈴木 一郎', position:'リーダー', start:'17:00', end:'22:00' },
+      ]);
+      monthlyAllShifts.set(`${targetMonth}-10`, [
+        { name:'佐藤 花子', position:'ホール',   start:'17:00', end:'22:00' },
+        { name:'鈴木 一郎', position:'リーダー', start:'18:00', end:'23:00' },
+      ]);
+      monthlyAllShifts.set(`${targetMonth}-15`, [
+        { name:'山田 太郎', position:'キッチン', start:'11:00', end:'16:00' },
+        { name:'佐藤 花子', position:'ホール',   start:'11:00', end:'16:00' },
+        { name:'鈴木 一郎', position:'リーダー', start:'11:00', end:'16:00' },
+      ]);
+      renderCalendar();
+      setLoadingState(false);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        Object.keys(res).forEach(d => monthlyAllShifts.set(d, res[d]));
+        renderCalendar();
+        setLoadingState(false);
+      })
+      .withFailureHandler(() => setLoadingState(false))
+      .getMonthlyConfirmedShifts(targetMonth);
+  }
+  // 同日出勤メンバーモーダル
+  function openCoworkersModal(dateStr) {
+    const [, m, d] = dateStr.split('-');
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const dayName  = dayNames[new Date(dateStr).getDay()];
+    document.getElementById('coworkers-date-title').textContent = `${parseInt(m)}月${parseInt(d)}日（${dayName}）の出勤予定`;
+    const list    = document.getElementById('coworkers-list');
+    const loading = document.getElementById('coworkers-loading');
+    list.innerHTML = '';
+    loading.style.display = 'block';
+    document.getElementById('coworkers-modal').classList.add('show');
+    if (typeof google === 'undefined') {
+      setTimeout(() => {
+        loading.style.display = 'none';
+        const dummy = [
+          { name:'山田 太郎', position:'キッチン', start:'17:00', end:'22:00', restMinutes:30, userId:'001' },
+          { name:'佐藤 花子', position:'ホール',   start:'18:00', end:'23:00', restMinutes:45, userId:'002' },
+          { name:'鈴木 一郎', position:'リーダー', start:'17:00', end:'22:00', restMinutes:30, userId:'003' },
+        ];
+        renderCoworkers(dummy);
+      }, 400);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(workers => {
+        loading.style.display = 'none';
+        renderCoworkers(workers);
+      })
+      .getDailyConfirmedShifts(dateStr);
+  }
+  function renderCoworkers(workers) {
+    const list = document.getElementById('coworkers-list');
+    list.innerHTML = '';
+    if (workers.length === 0) {
+      list.innerHTML = '<p style="text-align:center; padding:2rem; color:var(--c-text-muted);">出勤予定のスタッフはいません。</p>';
+      return;
+    }
+    // ポジション順に並び替え
+    const posOrder = { '社員':0, 'リーダー':1, 'キッチン':2, 'ホール':3 };
+    workers.sort((a,b) => (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9));
+    workers.forEach(w => {
+      const restTxt = w.restMinutes > 0 ? `（休憩${w.restMinutes}分）` : '';
+      const isMe    = w.userId === currentStaffId;
+      const div = document.createElement('div');
+      div.className = 'coworker-item';
+      div.innerHTML = `
+        <div class="coworker-info">
+          <span class="coworker-name">
+            ${w.name}
+            ${isMe ? '<span style="color:var(--c-primary);font-size:0.72rem;font-weight:700;background:var(--c-primary-light);padding:0.1rem 0.4rem;border-radius:4px;">あなた</span>' : ''}
+            <span class="pos-badge ${w.position}">${w.position}</span>
+          </span>
+        </div>
+        <div class="coworker-time">${w.start}${w.end ? ' - ' + w.end : '〜'}${w.restTime ? '（休憩 ' + w.restTime + '）' : ''}</div>
+      `;
+      list.appendChild(div);
+    });
+  }
+  function closeCoworkersModal() {
+    document.getElementById('coworkers-modal').classList.remove('show');
+  }
+  // =========================================
+  // 管理者：シフト編集・確定
+  // =========================================
+  function loadAdminDesiredShifts() {
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    renderCalendar();
+    setLoadingState(true);
+    if (typeof google === 'undefined') {
+      adminStaffData = [
+        {
+          id:'001', name:'山田 太郎', role:'一般', defaultPosition:'キッチン',
+          shifts: {
+            1: { desired:{ start:'17:00', end:'22:00', memo:'早い時間なら' }, confirmed:null },
+            5: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:{ start:'17:00', end:'22:00', restMinutes:30, position:'キッチン' } },
+            8: { desired:{ start:'18:00', end:'23:00', memo:'' }, confirmed:null },
+          }
+        },
+        {
+          id:'002', name:'佐藤 花子', role:'一般', defaultPosition:'ホール',
+          shifts: {
+            1: { desired:{ start:'18:00', end:'23:00', memo:'' }, confirmed:null },
+            5: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:null },
+            8: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:{ start:'17:00', end:'22:00', restMinutes:45, position:'ホール' } },
+          }
+        },
+        {
+          id:'003', name:'鈴木 一郎', role:'一般', defaultPosition:'リーダー',
+          shifts: {
+            5: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:null },
+          }
+        },
+      ];
+      renderCalendar();
+      setLoadingState(false);
+      if (selectedAdminDate) {
+        const day = Number(selectedAdminDate.split('-')[2]);
+        showAdminDailyPanel(day, selectedAdminDate);
+      }
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(data => {
+        adminStaffData = data;
+        renderCalendar();
+        setLoadingState(false);
+        if (selectedAdminDate) {
+          const day = Number(selectedAdminDate.split('-')[2]);
+          showAdminDailyPanel(day, selectedAdminDate);
+        }
+      })
+      .withFailureHandler(() => setLoadingState(false))
+      .getAdminDesiredShifts(targetMonth);
+  }
+  function showAdminDailyPanel(day, dateStr) {
+    selectedAdminDate = dateStr;
+    renderCalendar();
+    const panel = document.getElementById('admin-daily-panel');
+    const title = document.getElementById('admin-daily-date-title');
+    const list  = document.getElementById('admin-daily-workers-list');
+    panel.style.display = 'block';
+    const [, m, d] = dateStr.split('-');
+    const dayNames = ['日','月','火','水','木','金','土'];
+    const dayName  = dayNames[new Date(dateStr).getDay()];
+    title.textContent = `${parseInt(m)}月${parseInt(d)}日（${dayName}）のシフト編集`;
+    list.innerHTML = '';
+    if (adminStaffData.length === 0) {
+      list.innerHTML = '<div class="empty-msg">スタッフデータがありません。</div>';
+      return;
+    }
+    adminStaffData.forEach((staff, staffIdx) => {
+      const dayData  = staff.shifts[day] || { desired: null, confirmed: null };
+      const hasDesired   = !!dayData.desired;
+      const hasConfirmed = !!dayData.confirmed;
+      let statusBadge = '';
+      let timeText    = '休み / 希望なし';
+      let cardClass   = 'admin-worker-card no-shift';
+      if (hasConfirmed) {
+        const pos = dayData.confirmed.position || staff.defaultPosition;
+        statusBadge = `<span class="pos-badge ${pos}" style="margin-left:0.5rem;">確定: ${pos}</span>`;
+        timeText    = `${dayData.confirmed.start}〜 （休憩${dayData.confirmed.restMinutes}分）`;
+        cardClass   = 'admin-worker-card has-confirmed';
+      } else if (hasDesired) {
+        cardClass = 'admin-worker-card has-desired';
+      }
+      let desiredHtml = '';
+      if (hasDesired) {
+        desiredHtml = `<div style="font-size:0.75rem; color:var(--c-red); font-weight:600; margin-top:0.3rem; display:flex; align-items:center; gap:0.25rem;">
+          <span class="material-symbols-outlined" style="font-size:0.85rem;">event_note</span>
+          希望: ${dayData.desired.start}〜${dayData.desired.memo ? ' ・' + dayData.desired.memo : ''}
+        </div>`;
+      }
+      const card = document.createElement('div');
+      card.className = cardClass;
+      card.innerHTML = `
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:0.95rem; display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem;">
+            ${staff.name} ${statusBadge}
+          </div>
+          <div style="font-size:0.82rem; color:${hasConfirmed ? 'var(--c-text-main)' : 'var(--c-text-muted)'}; margin-top:0.25rem;">
+            ${hasConfirmed ? '✓ ' : ''}${timeText}
+          </div>
+          ${desiredHtml}
+        </div>
+        <span class="material-symbols-outlined" style="color:var(--c-text-muted); flex-shrink:0;">edit</span>
+      `;
+      card.addEventListener('click', () => openAdminEditModal(staffIdx, day, staff.name, dayData));
+      list.appendChild(card);
+    });
+    // パネルへスクロール
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  // =========================================
+  // 管理者：個別編集モーダル
+  // =========================================
+  let editingStaffIdx = null;
+  let editingDay      = null;
+  function openAdminEditModal(staffIdx, day, name, dayData) {
+    editingStaffIdx = staffIdx;
+    editingDay      = day;
+    const [, m] = selectedAdminDate.split('-');
+    document.getElementById('admin-edit-title').textContent = `${name} のシフト（${parseInt(m)}月${day}日）`;
+    const staff     = adminStaffData[staffIdx];
+    const startSel  = document.getElementById('admin-edit-start');
+    const endSel    = document.getElementById('admin-edit-end');
+    const restStartSel = document.getElementById('admin-edit-rest-start');
+    const restEndSel   = document.getElementById('admin-edit-rest-end');
+    const posSel    = document.getElementById('admin-edit-position');
+    const desiredRef = document.getElementById('admin-edit-desired-ref');
+    const desiredRefTime = document.getElementById('admin-edit-desired-ref-time');
+    // 希望シフト参照表示
+    if (dayData.desired) {
+      desiredRef.style.display = 'block';
+      let dText = dayData.desired.start;
+      if (dayData.desired.end) dText += `〜${dayData.desired.end}`;
+      else dText += '〜';
+      desiredRefTime.textContent = dText;
+    } else {
+      desiredRef.style.display = 'none';
+    }
+
+    // デフォルト値: confirmed > desired > デフォルト
+    if (dayData.confirmed) {
+      startSel.value = dayData.confirmed.start !== 'フリー' ? dayData.confirmed.start : '17:00';
+      endSel.value   = dayData.confirmed.end || '';
+      const rTime = dayData.confirmed.restTime || '';
+      if (rTime.includes('-')) {
+        const [rs, re] = rTime.split('-');
+        restStartSel.value = rs;
+        restEndSel.value = re;
+      } else {
+        restStartSel.value = '';
+        restEndSel.value = '';
+      }
+      posSel.value   = dayData.confirmed.position || staff.defaultPosition || 'ホール';
+    } else if (dayData.desired) {
+      startSel.value = dayData.desired.start !== 'フリー' ? dayData.desired.start : '17:00';
+      endSel.value   = dayData.desired.end || '';
+      restStartSel.value = '';
+      restEndSel.value = '';
+      posSel.value   = staff.defaultPosition || 'ホール';
+    } else {
+      startSel.value = '17:00';
+      endSel.value   = '';
+      restStartSel.value = '';
+      restEndSel.value = '';
+      posSel.value   = staff.defaultPosition || 'ホール';
+    }
+    document.getElementById('admin-edit-modal').classList.add('show');
+  }
+  function closeAdminEditModal() {
+    document.getElementById('admin-edit-modal').classList.remove('show');
+  }
+
+  function applyStaffShiftFromAdmin() {
+    let start = document.getElementById('admin-edit-start').value;
+    let end = document.getElementById('admin-edit-end').value;
+    const rs = document.getElementById('admin-edit-rest-start').value;
+    const re = document.getElementById('admin-edit-rest-end').value;
+    const restTime = (rs && re) ? `${rs}-${re}` : '';
+    const pos   = document.getElementById('admin-edit-position').value;
+    if (!adminStaffData[editingStaffIdx].shifts[editingDay]) {
+      adminStaffData[editingStaffIdx].shifts[editingDay] = { desired: null, confirmed: null };
+    }
+    adminStaffData[editingStaffIdx].shifts[editingDay].confirmed = { start, end, restTime, position: pos };
+    closeAdminEditModal();
+    showToast('適用しました。保存ボタンを押すまで確定しません。');
+    showAdminDailyPanel(editingDay, selectedAdminDate);
+  }
+  function removeStaffShiftFromAdmin() {
+    if (!adminStaffData[editingStaffIdx].shifts[editingDay]) {
+      adminStaffData[editingStaffIdx].shifts[editingDay] = { desired: null, confirmed: null };
+    }
+    adminStaffData[editingStaffIdx].shifts[editingDay].confirmed = null;
+    closeAdminEditModal();
+    showToast('クリアしました。保存ボタンを押すまで確定しません。');
+    showAdminDailyPanel(editingDay, selectedAdminDate);
+  }
+  function saveAdminGrid() {
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const payload = {
+      targetMonth,
+      data: adminStaffData.map(staff => {
+        const shifts = {};
+        Object.keys(staff.shifts).forEach(d => {
+          shifts[d] = staff.shifts[d].confirmed;
+        });
+        return { id: staff.id, defaultPosition: staff.defaultPosition, shifts };
+      })
+    };
+    const btnSave = document.getElementById('btn-save-admin');
+    const origHtml = btnSave.innerHTML;
+    btnSave.innerHTML = '<span class="material-symbols-outlined" style="animation:spin 1s linear infinite;">sync</span> 保存中...';
+    btnSave.disabled = true;
+    if (typeof google === 'undefined') {
+      setTimeout(() => {
+        showToast('確定シフトを保存しました (デモ)');
+        btnSave.innerHTML = origHtml;
+        btnSave.disabled = false;
+      }, 900);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.success) {
+          showToast('確定シフトを保存し、従業員側に反映しました！');
+        } else {
+          showToast('保存エラー: ' + res.message, 'error');
+        }
+        btnSave.innerHTML = origHtml;
+        btnSave.disabled = false;
+        loadAdminDesiredShifts();
+      })
+      .withFailureHandler(() => {
+        showToast('通信エラーが発生しました。', 'error');
+        btnSave.innerHTML = origHtml;
+        btnSave.disabled = false;
+      })
+      .saveConfirmedShifts(payload);
+  }
+  // =========================================
+  // 管理者：締切設定
+  // =========================================
+  function loadDeadlineDay() {
+    if (typeof google === 'undefined') {
+      document.getElementById('setting-deadline-day').value = '20';
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(day => {
+        systemDeadlineDay = day;
+        document.getElementById('setting-deadline-day').value = String(day);
+      })
+      .getDeadlineDay();
+  }
+  function changeDeadlineDaySetting() {
+    const day = Number(document.getElementById('setting-deadline-day').value);
+    if (typeof google === 'undefined') {
+      systemDeadlineDay = day;
+      showToast(`締切日を毎月 ${day} 日に変更しました (デモ)`);
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(() => {
+        systemDeadlineDay = day;
+        showToast(`締切日を毎月 ${day} 日に保存しました`);
+      })
+      .saveDeadlineDay(day);
+  }
+  function checkSubmissionDeadline() {
+    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const banner  = document.getElementById('deadline-lock-banner');
+    const btnSave = document.getElementById('btn-save-gas');
+    if (typeof google === 'undefined') {
+      banner.style.display = 'none';
+      isDeadlineLocked = false;
+      btnSave.disabled = false;
+      renderCalendar();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        isDeadlineLocked = res.isLocked;
+        if (res.isLocked && currentMode === 'submit') {
+          banner.style.display = 'flex';
+          document.getElementById('deadline-lock-message').textContent =
+            `シフト希望提出期限（${res.deadlineDateStr}）を過ぎています。新規提出・変更はできません。`;
+          btnSave.disabled = true;
+        } else {
+          banner.style.display = 'none';
+          btnSave.disabled = false;
+        }
+        renderCalendar();
+      })
+      .checkDeadlineStatus(targetMonth);
+  }
+  // =========================================
+  // 画面遷移・モード切替
+  // =========================================
+  function switchMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
+    const calArea         = document.getElementById('calendar-area');
+    const rightPanel      = document.getElementById('right-panel');
+    const fabBtn          = document.getElementById('fab-btn');
+    const btnSaveGas      = document.getElementById('btn-save-gas');
+    const btnSaveAdmin    = document.getElementById('btn-save-admin');
+    const pageTitle       = document.getElementById('page-title');
+    const periodToggle    = document.getElementById('period-toggle-area');
+    const inputSection    = document.getElementById('input-section');
+    const detailSection   = document.getElementById('confirmed-detail-section');
+    const adminSettings   = document.getElementById('admin-settings-section');
+    const myshiftTabs     = document.getElementById('myshift-tabs');
+    const adminDailyPanel = document.getElementById('admin-daily-panel');
+    const banner          = document.getElementById('deadline-lock-banner');
+    // リセット
+    banner.style.display = 'none';
+    isDeadlineLocked = false;
+    adminDailyPanel.style.display = 'none';
+    selectedAdminDate = null;
+    if (mode === 'submit') {
+      document.getElementById('nav-submit').classList.add('active');
+      pageTitle.textContent = 'シフト希望提出';
+      document.getElementById('list-title').textContent = '提出する希望一覧';
+      calArea.style.display        = 'block';
+      rightPanel.style.display     = 'flex';
+      inputSection.style.display   = 'block';
+      detailSection.style.display  = 'none';
+      adminSettings.style.display  = 'none';
+      myshiftTabs.style.display    = 'none';
+      document.getElementById('view-toggle-area').style.display = 'none';
+      switchCalendarView('calendar');
+      fabBtn.style.display         = '';
+      btnSaveGas.style.display     = 'flex';
+      btnSaveAdmin.style.display   = 'none';
+      // 次月のシフト希望提出をデフォルトに
+      const next = new Date();
+      next.setMonth(next.getMonth() + 1);
+      currentYear  = next.getFullYear();
+      currentMonth = next.getMonth() + 1;
+      checkSubmissionDeadline();
+      loadSavedShiftRequests();
+    }
+    else if (mode === 'view') {
+      document.getElementById('nav-myshift').classList.add('active');
+      pageTitle.textContent = 'マイシフト';
+      document.getElementById('list-title').textContent = '確定・希望リスト';
+      calArea.style.display        = 'block';
+      rightPanel.style.display     = 'flex';
+      inputSection.style.display   = 'none';
+      detailSection.style.display  = 'block';
+      adminSettings.style.display  = 'none';
+      myshiftTabs.style.display    = 'flex';
+      document.getElementById('view-toggle-area').style.display = 'none';
+      switchCalendarView('calendar');
+      fabBtn.style.display         = 'none';
+      btnSaveGas.style.display     = 'none';
+      btnSaveAdmin.style.display   = 'none';
+      currentYear  = new Date().getFullYear();
+      currentMonth = new Date().getMonth() + 1;
+      activeMyShiftTab = 'confirmed';
+      document.getElementById('tab-btn-confirmed').classList.add('active');
+      document.getElementById('tab-btn-desired').classList.remove('active');
+      loadConfirmedShifts();
+    }
+    else if (mode === 'allshift') {
+      document.getElementById('nav-allshift').classList.add('active');
+      pageTitle.textContent = '全体シフト';
+      calArea.style.display        = 'block';
+      rightPanel.style.display     = 'none'; // 全体表示では右パネル不要
+      myshiftTabs.style.display    = 'none';
+      document.getElementById('view-toggle-area').style.display = 'flex';
+      fabBtn.style.display         = 'none';
+      btnSaveGas.style.display     = 'none';
+      btnSaveAdmin.style.display   = 'none';
+      currentYear  = new Date().getFullYear();
+      currentMonth = new Date().getMonth() + 1;
+      loadMonthlyAllShifts();
+    }
+    else if (mode === 'admin') {
+      document.getElementById('nav-admin').classList.add('active');
+      pageTitle.textContent = 'シフト作成・編集';
+      document.getElementById('list-title').textContent = 'システム設定';
+      calArea.style.display        = 'block';
+      rightPanel.style.display     = 'flex';
+      inputSection.style.display   = 'none';
+      detailSection.style.display  = 'none';
+      adminSettings.style.display  = 'block';
+      myshiftTabs.style.display    = 'none';
+      document.getElementById('view-toggle-area').style.display = 'flex';
+      fabBtn.style.display         = 'none';
+      btnSaveGas.style.display     = 'none';
+      btnSaveAdmin.style.display   = 'flex';
+      // 翌月編集をデフォルトに
+      const next = new Date();
+      next.setMonth(next.getMonth() + 1);
+      currentYear  = next.getFullYear();
+      currentMonth = next.getMonth() + 1;
+      loadDeadlineDay();
+      loadAdminDesiredShifts();
+    }
+    if (window.innerWidth <= 900) closeBottomSheet();
+  }
+  // =========================================
+  // UI補助・ユーティリティ
+  // =========================================
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('right-panel-overlay').classList.toggle('show');
+  }
+  function openBottomSheet() {
+    document.getElementById('right-panel').classList.add('open');
+    document.getElementById('right-panel-overlay').classList.add('show');
+  }
+  function closeBottomSheet() {
+    document.getElementById('right-panel').classList.remove('open');
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('right-panel-overlay').classList.remove('show');
+  }
+  function showToast(message, type = 'success') {
+    const toast   = document.getElementById('toast');
+    const msgSpan = document.getElementById('toast-message');
+    msgSpan.textContent = message;
+    toast.className = `toast toast-${type}`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+</script>
+<style>
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  .material-symbols-outlined[style*="animation"] {
+    display: inline-block;
+  }
+</style>
