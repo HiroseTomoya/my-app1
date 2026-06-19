@@ -1230,9 +1230,15 @@
           </div>
           ${desiredHtml}
         </div>
-        <span class="material-symbols-outlined" style="color:var(--c-text-muted); flex-shrink:0;">edit</span>
+        <button class="admin-edit-btn" aria-label="${staff.name}のシフトを編集">
+          <span class="material-symbols-outlined">edit</span>
+          編集
+        </button>
       `;
-      card.addEventListener('click', () => openAdminEditModal(staffIdx, day, staff.name, dayData));
+      card.querySelector('.admin-edit-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAdminEditModal(staffIdx, day, staff.name, dayData);
+      });
       list.appendChild(card);
     });
     // パネルへスクロール
