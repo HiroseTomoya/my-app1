@@ -1552,7 +1552,8 @@
       currentMonth = next.getMonth() + 1;
       checkSubmissionDeadline();
       shiftRequests.clear();
-      refreshData();
+      loadHolidays(() => renderCalendar());
+      loadSavedShiftRequests();
     }
     else if (mode === 'view') {
       document.getElementById('nav-myshift').classList.add('active');
@@ -1576,7 +1577,8 @@
       document.getElementById('tab-btn-desired').classList.remove('active');
       confirmedShifts.clear();
       shiftRequests.clear();
-      refreshData();
+      loadHolidays(() => renderCalendar());
+      loadConfirmedShifts();
     }
     else if (mode === 'allshift') {
       document.getElementById('nav-allshift').classList.add('active');
@@ -1591,7 +1593,8 @@
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
       monthlyAllShifts.clear();
-      refreshData();
+      loadHolidays(() => renderCalendar());
+      loadMonthlyAllShifts();
     }
     else if (mode === 'admin') {
       document.getElementById('nav-admin').classList.add('active');
@@ -1614,7 +1617,8 @@
       currentMonth = next.getMonth() + 1;
       loadDeadlineDay();
       adminStaffData = [];
-      refreshData();
+      loadHolidays(() => renderCalendar());
+      loadAdminDesiredShifts();
     }
     if (window.innerWidth <= 900) closeBottomSheet();
   }
