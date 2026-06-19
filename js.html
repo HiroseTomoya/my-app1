@@ -12,10 +12,10 @@
   let currentStaffDefaultPosition = null;
   const selectedDates = new Set();
   const shiftRequests = new Map();    // 従業員の希望提出用 (dateStr -> {start, end, memo})
-  const confirmedShifts = new Map();  // 個人の確定シフト (dateStr -> {start, end, restMinutes, position})
+  const confirmedShifts = new Map();  // 個人の確定シフト (dateStr -> {start, end, restTime, position})
   const monthlyAllShifts = new Map(); // 全員の確定シフト (dateStr -> [{userId, name, start, end, position}])
   const holidays = new Map();         // 祝日データ (dateStr -> holidayName)
-  // 管理者編集用 (userId -> { shifts: { day -> {start, end, restMinutes, position} } })
+  // 管理者編集用 (userId -> { shifts: { day -> {start, end, restTime, position} } })
   let adminStaffData = [];
   let selectedAdminDate = null;
   let systemDeadlineDay = 20;
@@ -862,10 +862,10 @@
     setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     if (typeof google === 'undefined') {
-      confirmedShifts.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', restMinutes:30, position:'キッチン' });
-      confirmedShifts.set(`${targetMonth}-06`, { start:'17:00', end:'23:00', restMinutes:45, position:'キッチン' });
-      confirmedShifts.set(`${targetMonth}-10`, { start:'18:00', end:'22:00', restMinutes:0,  position:'キッチン' });
-      confirmedShifts.set(`${targetMonth}-15`, { start:'11:00', end:'16:00', restMinutes:0,  position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', restTime:'19:00-19:30', position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-06`, { start:'17:00', end:'23:00', restTime:'20:00-20:45', position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-10`, { start:'18:00', end:'22:00', restTime:'',  position:'キッチン' });
+      confirmedShifts.set(`${targetMonth}-15`, { start:'11:00', end:'16:00', restTime:'',  position:'キッチン' });
       shiftRequests.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', memo:'テスト' });
       shiftRequests.set(`${targetMonth}-07`, { start:'17:00', end:'22:00', memo:'テスト' });
       shiftRequests.set(`${targetMonth}-10`, { start:'18:00', end:'22:00', memo:'' });
@@ -1081,9 +1081,9 @@
       setTimeout(() => {
         loading.style.display = 'none';
         const dummy = [
-          { name:'山田 太郎', position:'キッチン', start:'17:00', end:'22:00', restMinutes:30, userId:'001' },
-          { name:'佐藤 花子', position:'ホール',   start:'18:00', end:'23:00', restMinutes:45, userId:'002' },
-          { name:'鈴木 一郎', position:'リーダー', start:'17:00', end:'22:00', restMinutes:30, userId:'003' },
+          { name:'山田 太郎', position:'キッチン', start:'17:00', end:'22:00', restTime:'19:00-19:30', userId:'001' },
+          { name:'佐藤 花子', position:'ホール',   start:'18:00', end:'23:00', restTime:'20:00-20:45', userId:'002' },
+          { name:'鈴木 一郎', position:'リーダー', start:'17:00', end:'22:00', restTime:'19:00-19:30', userId:'003' },
         ];
         renderCoworkers(dummy);
       }, 400);
@@ -1107,7 +1107,7 @@
     const posOrder = { '社員':0, 'リーダー':1, 'キッチン':2, 'ホール':3 };
     workers.sort((a,b) => (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9));
     workers.forEach(w => {
-      const restTxt = w.restMinutes > 0 ? `（休憩${w.restMinutes}分）` : '';
+      const restTxt = w.restTime ? `（休憩 ${w.restTime}）` : '';
       const isMe    = w.userId === currentStaffId;
       const div = document.createElement('div');
       div.className = 'coworker-item';
@@ -1140,7 +1140,7 @@
           id:'001', name:'山田 太郎', role:'一般', defaultPosition:'キッチン',
           shifts: {
             1: { desired:{ start:'17:00', end:'22:00', memo:'早い時間なら' }, confirmed:null },
-            5: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:{ start:'17:00', end:'22:00', restMinutes:30, position:'キッチン' } },
+            5: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:{ start:'17:00', end:'22:00', restTime:'19:00-19:30', position:'キッチン' } },
             8: { desired:{ start:'18:00', end:'23:00', memo:'' }, confirmed:null },
           }
         },
@@ -1149,7 +1149,7 @@
           shifts: {
             1: { desired:{ start:'18:00', end:'23:00', memo:'' }, confirmed:null },
             5: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:null },
-            8: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:{ start:'17:00', end:'22:00', restMinutes:45, position:'ホール' } },
+            8: { desired:{ start:'17:00', end:'22:00', memo:'' }, confirmed:{ start:'17:00', end:'22:00', restTime:'20:00-20:45', position:'ホール' } },
           }
         },
         {
@@ -1206,7 +1206,7 @@
       if (hasConfirmed) {
         const pos = dayData.confirmed.position || staff.defaultPosition;
         statusBadge = `<span class="pos-badge ${pos}" style="margin-left:0.5rem;">確定: ${pos}</span>`;
-        timeText    = `${dayData.confirmed.start}〜 （休憩${dayData.confirmed.restMinutes}分）`;
+        timeText    = `${dayData.confirmed.start}〜${dayData.confirmed.end ? dayData.confirmed.end : ''}${dayData.confirmed.restTime ? '（休憩 ' + dayData.confirmed.restTime + '）' : ''}`;
         cardClass   = 'admin-worker-card has-confirmed';
       } else if (hasDesired) {
         cardClass = 'admin-worker-card has-desired';
