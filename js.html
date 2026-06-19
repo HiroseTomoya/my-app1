@@ -429,17 +429,43 @@
       else if (currentMode === 'allshift') {
         const isMobile = window.innerWidth <= 900;
         const members  = monthlyAllShifts.has(dateStr) ? monthlyAllShifts.get(dateStr) : [];
-        let badgesHtml = '<div class="cell-members-container">';
+        let badgesHtml = '';
         if (members.length > 0) {
-          const maxShow = isMobile ? 2 : 5;
-          members.slice(0, maxShow).forEach(m => {
-            badgesHtml += `<div class="cell-member-badge ${m.position}">${m.name}</div>`;
+          // ポジション別に集計
+          const posGroups = {};
+          members.forEach(m => {
+            const pos = m.position || 'その他';
+            if (!posGroups[pos]) posGroups[pos] = [];
+            posGroups[pos].push(m);
           });
-          if (members.length > maxShow) {
-            badgesHtml += `<div class="cell-more-badge">+${members.length - maxShow}人</div>`;
+
+          const maxNames = isMobile ? 3 : 6;
+          let shown = 0;
+          badgesHtml += '<div class="cell-members-container">';
+
+          // ポジション順で名前を表示
+          const posOrder = ['社員', 'リーダー', 'キッチン', 'ホール'];
+          const allPositions = [...new Set([...posOrder, ...Object.keys(posGroups)])];
+
+          for (const pos of allPositions) {
+            if (!posGroups[pos]) continue;
+            for (const m of posGroups[pos]) {
+              if (shown < maxNames) {
+                const shortName = m.name.split(/\s+/)[0];
+                badgesHtml += `<span class="cell-name-chip ${pos}">${shortName}</span>`;
+                shown++;
+              }
+            }
           }
+
+          if (members.length > maxNames) {
+            badgesHtml += `<span class="cell-more-chip">+${members.length - maxNames}</span>`;
+          }
+          badgesHtml += '</div>';
+
+          // 合計人数
+          badgesHtml += `<div class="cell-total-count">${members.length}人</div>`;
         }
-        badgesHtml += '</div>';
         innerHTML += badgesHtml;
         cell.innerHTML = innerHTML;
         cell.addEventListener('click', () => openCoworkersModal(dateStr));
