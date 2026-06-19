@@ -480,11 +480,29 @@
             if (dayData && dayData.confirmed) confirmedCount++;
           });
         }
-        if (isInPeriod && desiredCount > 0) {
-          innerHTML += `<div class="cell-desired-count">${desiredCount}人希望</div>`;
+        const totalStaff = adminStaffData.length;
+        if (isInPeriod && (desiredCount > 0 || confirmedCount > 0)) {
+          innerHTML += '<div class="cell-admin-stats">';
+          if (desiredCount > 0) {
+            innerHTML += `<div class="cell-admin-badge desired"><span class="material-symbols-outlined" style="font-size:0.7rem;">event_note</span>${desiredCount}人</div>`;
+          }
+          if (confirmedCount > 0) {
+            innerHTML += `<div class="cell-admin-badge confirmed"><span class="material-symbols-outlined" style="font-size:0.7rem;">check_circle</span>${confirmedCount}人</div>`;
+          }
+          innerHTML += '</div>';
+          // プログレスバー
+          if (desiredCount > 0) {
+            const pct = Math.round((confirmedCount / desiredCount) * 100);
+            innerHTML += `<div class="cell-admin-progress"><div class="cell-admin-progress-bar" style="width:${pct}%"></div></div>`;
+          }
         }
-        if (isInPeriod && confirmedCount > 0) {
-          innerHTML += `<div class="cell-confirmed-count">✓ ${confirmedCount}人確定</div>`;
+        // セルの状態別クラス
+        if (confirmedCount > 0 && confirmedCount >= desiredCount && desiredCount > 0) {
+          cell.classList.add('admin-all-confirmed');
+        } else if (confirmedCount > 0) {
+          cell.classList.add('admin-partial');
+        } else if (desiredCount > 0) {
+          cell.classList.add('admin-has-desired');
         }
         cell.innerHTML = innerHTML;
         if (isInPeriod) {

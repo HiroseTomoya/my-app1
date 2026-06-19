@@ -614,6 +614,11 @@
     .coworker-time { font-size: 0.9rem; }
     .pos-badge { font-size: 0.65rem; padding: 0.15rem 0.5rem; }
 
+    /* Admin cell mobile */
+    .cell-admin-badge { font-size: 0.55rem; padding: 0.1rem 0.3rem; gap: 1px; }
+    .cell-admin-badge .material-symbols-outlined { font-size: 0.6rem !important; }
+    .cell-admin-progress { height: 3px; margin-top: 2px; }
+
     /* All-Shift chips mobile */
     .cell-name-chip { font-size: 0.5rem; padding: 0.05rem 0.25rem; border-radius: 3px; }
     .cell-more-chip { font-size: 0.5rem; padding: 0.05rem 0.25rem; }
@@ -690,6 +695,49 @@
   .cell-total-count {
     font-size: 0.65rem; font-weight: 800; color: var(--c-primary);
     text-align: center; margin-top: 2px; line-height: 1;
+  }
+
+  /* Admin Calendar Cell States */
+  .cal-cell.admin-has-desired {
+    background: linear-gradient(135deg, hsl(35, 100%, 97%), hsl(40, 100%, 96%));
+    border-color: hsl(35, 80%, 82%);
+  }
+  .cal-cell.admin-partial {
+    background: linear-gradient(135deg, hsl(235, 100%, 97%), hsl(250, 100%, 96%));
+    border-color: hsl(235, 70%, 82%);
+  }
+  .cal-cell.admin-all-confirmed {
+    background: linear-gradient(135deg, hsl(155, 60%, 95%), hsl(160, 60%, 93%));
+    border-color: hsl(155, 50%, 75%);
+  }
+
+  /* Admin Cell Stats */
+  .cell-admin-stats {
+    display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto;
+  }
+  .cell-admin-badge {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: 0.65rem; font-weight: 800; padding: 0.15rem 0.4rem;
+    border-radius: 6px; line-height: 1.2; white-space: nowrap;
+  }
+  .cell-admin-badge.desired {
+    background: hsl(35, 95%, 92%); color: hsl(30, 85%, 40%);
+    border: 1px solid hsl(35, 80%, 82%);
+  }
+  .cell-admin-badge.confirmed {
+    background: hsl(155, 60%, 92%); color: hsl(155, 70%, 28%);
+    border: 1px solid hsl(155, 50%, 78%);
+  }
+
+  /* Progress Bar */
+  .cell-admin-progress {
+    height: 4px; background: hsl(210, 20%, 90%); border-radius: 4px;
+    margin-top: 4px; overflow: hidden;
+  }
+  .cell-admin-progress-bar {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--c-primary), hsl(155, 60%, 45%));
+    transition: width 0.4s ease;
   }
 
   /* Empty State */
