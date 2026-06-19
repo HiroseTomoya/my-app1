@@ -688,14 +688,23 @@
   /* Admin Worker Card */
   .admin-worker-card {
     display: flex; align-items: center; padding: 1rem 1.25rem;
-    border: 1px solid var(--c-border); border-radius: var(--radius-md);
-    background: white; margin-bottom: 0.5rem;
+    border: 1.5px solid var(--c-border); border-radius: var(--radius-md);
+    background: white; margin-bottom: 0.6rem;
     transition: all 0.2s ease;
   }
-  .admin-worker-card:hover { border-color: hsl(235, 60%, 85%); box-shadow: var(--shadow-sm); }
-  .admin-worker-card.has-confirmed { background: var(--c-primary-light); border-color: hsl(235, 80%, 88%); }
-  .admin-worker-card.has-desired { background: var(--c-red-light); border-color: hsl(350, 80%, 90%); }
-  .admin-worker-card.no-shift { opacity: 0.7; }
+  .admin-worker-card:hover { border-color: hsl(235, 60%, 80%); box-shadow: var(--shadow-md); }
+  .admin-worker-card.has-confirmed {
+    background: linear-gradient(135deg, hsl(235, 100%, 97%), hsl(250, 100%, 97%));
+    border-color: hsl(235, 70%, 78%); border-left: 4px solid var(--c-primary);
+  }
+  .admin-worker-card.has-desired {
+    background: linear-gradient(135deg, hsl(35, 100%, 97%), hsl(45, 100%, 96%));
+    border-color: hsl(35, 80%, 78%); border-left: 4px solid hsl(35, 85%, 55%);
+  }
+  .admin-worker-card.no-shift {
+    background: hsl(210, 20%, 97%); border-color: hsl(210, 15%, 88%);
+    border-left: 4px solid hsl(210, 15%, 78%); opacity: 0.8;
+  }
 
   /* Admin Edit Button */
   .admin-edit-btn {
