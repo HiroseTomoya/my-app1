@@ -1525,6 +1525,7 @@
     const adminSettings   = document.getElementById('admin-settings-section');
     const myshiftTabs     = document.getElementById('myshift-tabs');
     const adminDailyPanel = document.getElementById('admin-daily-panel');
+    const listSection     = document.getElementById('list-section');
     const banner          = document.getElementById('deadline-lock-banner');
     // リセット
     banner.style.display = 'none';
@@ -1540,6 +1541,7 @@
       inputSection.style.display   = 'block';
       detailSection.style.display  = 'none';
       adminSettings.style.display  = 'none';
+      listSection.style.display    = 'block';
       myshiftTabs.style.display    = 'none';
       document.getElementById('view-toggle-area').style.display = 'none';
       switchCalendarView('calendar');
@@ -1565,6 +1567,7 @@
       inputSection.style.display   = 'none';
       detailSection.style.display  = 'block';
       adminSettings.style.display  = 'none';
+      listSection.style.display    = 'block';
       myshiftTabs.style.display    = 'flex';
       document.getElementById('view-toggle-area').style.display = 'none';
       switchCalendarView('calendar');
@@ -1605,6 +1608,7 @@
       inputSection.style.display   = 'none';
       detailSection.style.display  = 'none';
       adminSettings.style.display  = 'block';
+      listSection.style.display    = 'none';
       myshiftTabs.style.display    = 'none';
       document.getElementById('view-toggle-area').style.display = 'flex';
       fabBtn.style.display         = 'none';
