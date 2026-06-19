@@ -513,31 +513,30 @@ function getAdminDesiredShifts(targetMonth) {
 function saveConfirmedShifts(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Confirmed_Shifts');
-  const header = ['Date', 'UserID', 'StartTime', 'EndTime', 'RestTime', 'Position'];
+  const headerRow = ['Date', 'UserID', 'StartTime', 'EndTime', 'RestTime', 'Position'];
   if (!sheet) {
     sheet = ss.insertSheet('Confirmed_Shifts');
-    sheet.appendRow(header);
+    sheet.appendRow(headerRow);
   }
-  
+
   const targetMonth = payload.targetMonth; // YYYY-MM
   const [year, month] = targetMonth.split('-').map(Number);
-  
+
   let startDay = 1;
   let endDay = new Date(year, month, 0).getDate();
-  
+
   // 保存対象日付のリストを作成
   const targetDates = [];
   for (let d = startDay; d <= endDay; d++) {
     targetDates.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
   }
-  
-  // 既存のシートデータを読み込み、今回の対象期間かつ該当メンバーのデータを一時退避、削除
+
+  // 既存のシートデータを読み込み、今回の対象期間のデータを除外して残す
   const data = sheet.getDataRange().getValues();
-  const header = data[0];
-  
+
   // 削除対象行を除いたデータを再構築
   const finalRows = [];
-  
+
   // 保存されてる行を走査
   for (let i = 1; i < data.length; i++) {
     const dStr = _formatDateStr(data[i][0]);
@@ -548,19 +547,19 @@ function saveConfirmedShifts(payload) {
         String(data[i][1]),
         data[i][2] instanceof Date ? data[i][2] : "'" + _formatTimeStr(data[i][2]),
         data[i][3] instanceof Date ? data[i][3] : "'" + _formatTimeStr(data[i][3]),
-        Number(data[i][4] || 0),
+        "'" + String(data[i][4] || ''),
         String(data[i][5] || 'ホール')
       ]);
     }
   }
-  
+
   // 今回の確定データを追加
   payload.data.forEach(staff => {
     const staffId = String(staff.id);
     for (let d = startDay; d <= endDay; d++) {
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const shift = staff.shifts[d];
-      
+
       // シフト情報がある場合のみ追加 (未確定は登録しない)
       if (shift && shift.start && shift.start !== '') {
         finalRows.push([
@@ -574,14 +573,14 @@ function saveConfirmedShifts(payload) {
       }
     }
   });
-  
+
   // クリアした上で再書き込み
   sheet.clear();
-  sheet.appendRow(header);
+  sheet.appendRow(headerRow);
   if (finalRows.length > 0) {
     sheet.getRange(2, 1, finalRows.length, finalRows[0].length).setValues(finalRows);
   }
-  
+
   return { success: true };
 }
 
