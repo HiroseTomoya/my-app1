@@ -484,10 +484,10 @@
         if (isInPeriod && (desiredCount > 0 || confirmedCount > 0)) {
           innerHTML += '<div class="cell-admin-stats">';
           if (desiredCount > 0) {
-            innerHTML += `<div class="cell-admin-badge desired"><span class="material-symbols-outlined" style="font-size:0.7rem;">event_note</span>${desiredCount}人</div>`;
+            innerHTML += `<div class="cell-admin-badge desired"><span class="material-symbols-outlined" style="font-size:0.7rem;">event_note</span>${desiredCount}人希望</div>`;
           }
           if (confirmedCount > 0) {
-            innerHTML += `<div class="cell-admin-badge confirmed"><span class="material-symbols-outlined" style="font-size:0.7rem;">check_circle</span>${confirmedCount}人</div>`;
+            innerHTML += `<div class="cell-admin-badge confirmed"><span class="material-symbols-outlined" style="font-size:0.7rem;">check_circle</span>${confirmedCount}人確定</div>`;
           }
           innerHTML += '</div>';
           // プログレスバー
