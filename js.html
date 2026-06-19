@@ -1551,7 +1551,8 @@
       currentYear  = next.getFullYear();
       currentMonth = next.getMonth() + 1;
       checkSubmissionDeadline();
-      loadSavedShiftRequests();
+      shiftRequests.clear();
+      refreshData();
     }
     else if (mode === 'view') {
       document.getElementById('nav-myshift').classList.add('active');
@@ -1573,13 +1574,15 @@
       activeMyShiftTab = 'confirmed';
       document.getElementById('tab-btn-confirmed').classList.add('active');
       document.getElementById('tab-btn-desired').classList.remove('active');
-      loadConfirmedShifts();
+      confirmedShifts.clear();
+      shiftRequests.clear();
+      refreshData();
     }
     else if (mode === 'allshift') {
       document.getElementById('nav-allshift').classList.add('active');
       pageTitle.textContent = '全体シフト';
       calArea.style.display        = 'block';
-      rightPanel.style.display     = 'none'; // 全体表示では右パネル不要
+      rightPanel.style.display     = 'none';
       myshiftTabs.style.display    = 'none';
       document.getElementById('view-toggle-area').style.display = 'flex';
       fabBtn.style.display         = 'none';
@@ -1587,7 +1590,8 @@
       btnSaveAdmin.style.display   = 'none';
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
-      loadMonthlyAllShifts();
+      monthlyAllShifts.clear();
+      refreshData();
     }
     else if (mode === 'admin') {
       document.getElementById('nav-admin').classList.add('active');
@@ -1609,7 +1613,8 @@
       currentYear  = next.getFullYear();
       currentMonth = next.getMonth() + 1;
       loadDeadlineDay();
-      loadAdminDesiredShifts();
+      adminStaffData = [];
+      refreshData();
     }
     if (window.innerWidth <= 900) closeBottomSheet();
   }
