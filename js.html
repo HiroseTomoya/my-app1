@@ -496,7 +496,15 @@
       let colorStyle = '';
       if (isSun) colorStyle = 'color:var(--c-red);';
       if (isSat) colorStyle = 'color:var(--c-blue);';
-      thead.innerHTML += `<th style="${colorStyle}">${i} <span style="font-size:0.7rem;opacity:0.8;">${dayNames[dayOfWeek]}</span></th>`;
+      const th = document.createElement('th');
+      th.style.cssText = colorStyle;
+      th.innerHTML = `${i} <span style="font-size:0.7rem;opacity:0.8;">${dayNames[dayOfWeek]}</span>`;
+      if (currentMode === 'allshift') {
+        th.style.cursor = 'pointer';
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        th.addEventListener('click', () => openCoworkersModal(dateStr));
+      }
+      thead.appendChild(th);
     }
     
     // 役職グループ定義
@@ -607,12 +615,15 @@
           const td = document.createElement('td');
           const start = staffData.shifts[i];
           if (start && start !== '休み') {
+            td.className = 'matrix-cell-clickable';
             if (start === 'フリー') {
               td.innerHTML = '<span class="matrix-cell-free">フリー</span>';
             } else {
               td.innerHTML = `<span class="matrix-cell-shift">${start}〜</span>`;
             }
           }
+          const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+          td.addEventListener('click', () => openCoworkersModal(dateStr));
           tr.appendChild(td);
         }
         tbody.appendChild(tr);
