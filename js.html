@@ -288,18 +288,30 @@
     }
   }
   function refreshData() {
-    renderCalendar(); // 画面遷移を速く見せるため即座に再描画
-    loadHolidays(() => {
-      if      (currentMode === 'view')     loadConfirmedShifts();
-      else if (currentMode === 'submit')   loadSavedShiftRequests();
-      else if (currentMode === 'allshift') loadMonthlyAllShifts();
-      else if (currentMode === 'admin')    loadAdminDesiredShifts();
-    });
+    renderCalendar();
+    let holidayDone = false, dataDone = false;
+    function tryFinalRender() {
+      if (holidayDone && dataDone) renderCalendar();
+    }
+    loadHolidays(() => { holidayDone = true; tryFinalRender(); });
+    const loader =
+      currentMode === 'view'     ? loadConfirmedShifts :
+      currentMode === 'submit'   ? loadSavedShiftRequests :
+      currentMode === 'allshift' ? loadMonthlyAllShifts :
+      currentMode === 'admin'    ? loadAdminDesiredShifts : null;
+    if (loader) loader(() => { dataDone = true; tryFinalRender(); });
   }
   // =========================================
   // 祝日の読み込み
   // =========================================
+  let _holidayCache = {}; // { 'YYYY-MM': Map }
   function loadHolidays(callback) {
+    const key = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    if (_holidayCache[key]) {
+      holidays = new Map(_holidayCache[key]);
+      if (callback) callback();
+      return;
+    }
     holidays.clear();
     if (typeof google === 'undefined') {
       // デモ用祝日
@@ -311,16 +323,16 @@
         '2026-10-12':'スポーツの日','2026-11-03':'文化の日','2026-11-23':'勤労感謝の日',
       };
       Object.entries(demoHolidays).forEach(([d, n]) => {
-        if (d.startsWith(`${currentYear}-${String(currentMonth).padStart(2,'0')}`)) {
-          holidays.set(d, n);
-        }
+        if (d.startsWith(key)) holidays.set(d, n);
       });
+      _holidayCache[key] = new Map(holidays);
       if (callback) callback();
       return;
     }
     google.script.run
       .withSuccessHandler(res => {
         Object.keys(res).forEach(d => holidays.set(d, res[d]));
+        _holidayCache[key] = new Map(holidays);
         if (callback) callback();
       })
       .getHolidays(currentYear, currentMonth);
@@ -706,9 +718,8 @@
   // =========================================
   // 従業員用：希望提出・一括入力
   // =========================================
-  function loadSavedShiftRequests() {
+  function loadSavedShiftRequests(doneCallback) {
     shiftRequests.clear();
-    renderCalendar();
     setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     if (typeof google === 'undefined') {
@@ -721,6 +732,7 @@
       renderCalendar();
       renderRequestList();
       setLoadingState(false);
+      if (doneCallback) doneCallback();
       return;
     }
     google.script.run
@@ -731,8 +743,9 @@
         renderCalendar();
         renderRequestList();
         setLoadingState(false);
+        if (doneCallback) doneCallback();
       })
-      .withFailureHandler(() => setLoadingState(false))
+      .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
       .getSavedShiftRequests(currentStaffId, targetMonth);
   }
   function toggleInputTime() {
@@ -911,10 +924,9 @@
   // =========================================
   // 従業員用：確定シフト・マイシフト詳細
   // =========================================
-  function loadConfirmedShifts() {
+  function loadConfirmedShifts(doneCallback) {
     confirmedShifts.clear();
     shiftRequests.clear();
-    renderCalendar();
     setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     if (typeof google === 'undefined') {
@@ -928,23 +940,31 @@
       renderCalendar();
       renderRequestList();
       setLoadingState(false);
+      if (doneCallback) doneCallback();
       return;
+    }
+    let reqDone = false, confDone = false;
+    function checkBothDone() {
+      if (!reqDone || !confDone) return;
+      renderCalendar();
+      renderRequestList();
+      setLoadingState(false);
+      if (doneCallback) doneCallback();
     }
     google.script.run
       .withSuccessHandler(reqRes => {
         Object.keys(reqRes).forEach(d => shiftRequests.set(d, reqRes[d]));
-        google.script.run
-          .withSuccessHandler(confRes => {
-            Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
-            renderCalendar();
-            renderRequestList();
-            setLoadingState(false);
-          })
-          .withFailureHandler(() => setLoadingState(false))
-          .getConfirmedShifts(currentStaffId, targetMonth);
+        reqDone = true; checkBothDone();
       })
-      .withFailureHandler(() => setLoadingState(false))
+      .withFailureHandler(() => { reqDone = true; checkBothDone(); })
       .getSavedShiftRequests(currentStaffId, targetMonth);
+    google.script.run
+      .withSuccessHandler(confRes => {
+        Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
+        confDone = true; checkBothDone();
+      })
+      .withFailureHandler(() => { confDone = true; checkBothDone(); })
+      .getConfirmedShifts(currentStaffId, targetMonth);
   }
   function buildDetailCardHtml(shift, isConfirmed) {
     let workMinText = '';
@@ -1085,9 +1105,8 @@
   // =========================================
   // 全体シフト
   // =========================================
-  function loadMonthlyAllShifts() {
+  function loadMonthlyAllShifts(doneCallback) {
     monthlyAllShifts.clear();
-    renderCalendar();
     setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     if (typeof google === 'undefined') {
@@ -1111,6 +1130,7 @@
       ]);
       renderCalendar();
       setLoadingState(false);
+      if (doneCallback) doneCallback();
       return;
     }
     google.script.run
@@ -1118,8 +1138,9 @@
         Object.keys(res).forEach(d => monthlyAllShifts.set(d, res[d]));
         renderCalendar();
         setLoadingState(false);
+        if (doneCallback) doneCallback();
       })
-      .withFailureHandler(() => setLoadingState(false))
+      .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
       .getMonthlyConfirmedShifts(targetMonth);
   }
   // 同日出勤メンバーモーダル
@@ -1186,9 +1207,8 @@
   // =========================================
   // 管理者：シフト編集・確定
   // =========================================
-  function loadAdminDesiredShifts() {
+  function loadAdminDesiredShifts(doneCallback) {
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
-    renderCalendar();
     setLoadingState(true);
     if (typeof google === 'undefined') {
       adminStaffData = [
@@ -1221,6 +1241,7 @@
         const day = Number(selectedAdminDate.split('-')[2]);
         showAdminDailyPanel(day, selectedAdminDate);
       }
+      if (doneCallback) doneCallback();
       return;
     }
     google.script.run
@@ -1232,8 +1253,9 @@
           const day = Number(selectedAdminDate.split('-')[2]);
           showAdminDailyPanel(day, selectedAdminDate);
         }
+        if (doneCallback) doneCallback();
       })
-      .withFailureHandler(() => setLoadingState(false))
+      .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
       .getAdminDesiredShifts(targetMonth);
   }
   function showAdminDailyPanel(day, dateStr) {
