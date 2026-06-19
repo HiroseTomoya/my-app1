@@ -943,28 +943,22 @@
       if (doneCallback) doneCallback();
       return;
     }
-    let reqDone = false, confDone = false;
-    function checkBothDone() {
-      if (!reqDone || !confDone) return;
-      renderCalendar();
-      renderRequestList();
-      setLoadingState(false);
-      if (doneCallback) doneCallback();
-    }
     google.script.run
       .withSuccessHandler(reqRes => {
         Object.keys(reqRes).forEach(d => shiftRequests.set(d, reqRes[d]));
-        reqDone = true; checkBothDone();
+        google.script.run
+          .withSuccessHandler(confRes => {
+            Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
+            renderCalendar();
+            renderRequestList();
+            setLoadingState(false);
+            if (doneCallback) doneCallback();
+          })
+          .withFailureHandler(e => { console.error('getConfirmedShifts failed:', e); renderCalendar(); renderRequestList(); setLoadingState(false); if (doneCallback) doneCallback(); })
+          .getConfirmedShifts(currentStaffId, targetMonth);
       })
-      .withFailureHandler(() => { reqDone = true; checkBothDone(); })
+      .withFailureHandler(e => { console.error('getSavedShiftRequests failed:', e); setLoadingState(false); if (doneCallback) doneCallback(); })
       .getSavedShiftRequests(currentStaffId, targetMonth);
-    google.script.run
-      .withSuccessHandler(confRes => {
-        Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
-        confDone = true; checkBothDone();
-      })
-      .withFailureHandler(() => { confDone = true; checkBothDone(); })
-      .getConfirmedShifts(currentStaffId, targetMonth);
   }
   function buildDetailCardHtml(shift, isConfirmed) {
     let workMinText = '';
