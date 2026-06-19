@@ -441,7 +441,7 @@ function checkDeadlineStatus(targetMonth) {
  */
 function getAdminDesiredShifts(targetMonth) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const staffList = getStaffList().filter(s => s.role !== '管理者'); // 管理者は除く
+  const staffList = getStaffList();
   
   // 希望データを読み込む
   const reqSheet = ss.getSheetByName('Desired_Shifts');
