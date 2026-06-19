@@ -463,7 +463,7 @@ function getAdminDesiredShifts(targetMonth) {
   // すでに確定しているシフトデータも読み込む
   const confSheet = ss.getSheetByName('Confirmed_Shifts');
   const confData = confSheet ? confSheet.getDataRange().getValues() : [];
-  const confMap = {}; // { userId: { 'YYYY-MM-DD': { start, end, restMinutes, position } } }
+  const confMap = {}; // { userId: { 'YYYY-MM-DD': { start, end, restTime, position } } }
   for (let i = 1; i < confData.length; i++) {
     const d = _formatDateStr(confData[i][0]);
     const sId = String(confData[i][1]);
@@ -471,7 +471,7 @@ function getAdminDesiredShifts(targetMonth) {
     confMap[sId][d] = {
       start: _formatTimeStr(confData[i][2]),
       end: _formatTimeStr(confData[i][3]),
-      restMinutes: Number(confData[i][4] || 0),
+      restTime: String(confData[i][4] || ''),
       position: String(confData[i][5] || 'ホール')
     };
   }
