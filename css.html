@@ -617,7 +617,8 @@
     /* Admin cell mobile */
     .cell-admin-badge { font-size: 0.55rem; padding: 0.1rem 0.3rem; gap: 1px; }
     .cell-admin-badge .material-symbols-outlined { font-size: 0.6rem !important; }
-    .cell-admin-progress { height: 3px; margin-top: 2px; }
+    .cell-admin-progress-label { font-size: 0.5rem; margin-top: 1px; }
+    .cell-admin-progress { height: 3px; margin-top: 1px; }
 
     /* All-Shift chips mobile */
     .cell-name-chip { font-size: 0.5rem; padding: 0.05rem 0.25rem; border-radius: 3px; }
@@ -730,6 +731,10 @@
   }
 
   /* Progress Bar */
+  .cell-admin-progress-label {
+    font-size: 0.55rem; font-weight: 800; color: var(--c-text-muted);
+    text-align: center; margin-top: 3px; line-height: 1;
+  }
   .cell-admin-progress {
     height: 4px; background: hsl(210, 20%, 90%); border-radius: 4px;
     margin-top: 4px; overflow: hidden;

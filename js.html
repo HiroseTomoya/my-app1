@@ -493,6 +493,7 @@
           // プログレスバー
           if (desiredCount > 0) {
             const pct = Math.round((confirmedCount / desiredCount) * 100);
+            innerHTML += `<div class="cell-admin-progress-label">確定率 ${pct}%</div>`;
             innerHTML += `<div class="cell-admin-progress"><div class="cell-admin-progress-bar" style="width:${pct}%"></div></div>`;
           }
         }
