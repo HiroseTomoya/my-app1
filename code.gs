@@ -172,7 +172,8 @@ function submitShiftRequests(payload) {
       sheet.deleteRow(i + 1);
     }
   }
-  
+  SpreadsheetApp.flush();
+
   const timestamp = new Date();
   const rows = payload.shifts.map(shift => [
     staffId,
