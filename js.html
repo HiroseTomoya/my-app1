@@ -1140,7 +1140,7 @@
         setLoadingState(false);
         if (doneCallback) doneCallback();
       })
-      .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
+      .withFailureHandler(e => { setLoadingState(false); showToast('全体シフトの読み込みに失敗しました: ' + e.message, 'error'); if (doneCallback) doneCallback(); })
       .getMonthlyConfirmedShifts(targetMonth);
   }
   // 同日出勤メンバーモーダル
@@ -1255,7 +1255,7 @@
         }
         if (doneCallback) doneCallback();
       })
-      .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
+      .withFailureHandler(e => { setLoadingState(false); showToast('シフト編集データの読み込みに失敗しました: ' + e.message, 'error'); if (doneCallback) doneCallback(); })
       .getAdminDesiredShifts(targetMonth);
   }
   function showAdminDailyPanel(day, dateStr) {
@@ -1551,7 +1551,7 @@
       currentYear  = next.getFullYear();
       currentMonth = next.getMonth() + 1;
       checkSubmissionDeadline();
-      shiftRequests.clear();
+      renderCalendar();
       loadHolidays(() => renderCalendar());
       loadSavedShiftRequests();
     }
@@ -1575,8 +1575,7 @@
       activeMyShiftTab = 'confirmed';
       document.getElementById('tab-btn-confirmed').classList.add('active');
       document.getElementById('tab-btn-desired').classList.remove('active');
-      confirmedShifts.clear();
-      shiftRequests.clear();
+      renderCalendar();
       loadHolidays(() => renderCalendar());
       loadConfirmedShifts();
     }
@@ -1592,7 +1591,7 @@
       btnSaveAdmin.style.display   = 'none';
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
-      monthlyAllShifts.clear();
+      renderCalendar();
       loadHolidays(() => renderCalendar());
       loadMonthlyAllShifts();
     }
@@ -1616,7 +1615,7 @@
       currentYear  = next.getFullYear();
       currentMonth = next.getMonth() + 1;
       loadDeadlineDay();
-      adminStaffData = [];
+      renderCalendar();
       loadHolidays(() => renderCalendar());
       loadAdminDesiredShifts();
     }
