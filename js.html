@@ -1140,7 +1140,7 @@
         setLoadingState(false);
         if (doneCallback) doneCallback();
       })
-      .withFailureHandler(e => { setLoadingState(false); showToast('全体シフトの読み込みに失敗しました: ' + e.message, 'error'); if (doneCallback) doneCallback(); })
+      .withFailureHandler(e => { setLoadingState(false); showToast('全体シフトの読み込みに失敗しました: ' + (e && e.message || e), 'error'); if (doneCallback) doneCallback(); })
       .getMonthlyConfirmedShifts(targetMonth);
   }
   // 同日出勤メンバーモーダル
@@ -1255,7 +1255,7 @@
         }
         if (doneCallback) doneCallback();
       })
-      .withFailureHandler(e => { setLoadingState(false); showToast('シフト編集データの読み込みに失敗しました: ' + e.message, 'error'); if (doneCallback) doneCallback(); })
+      .withFailureHandler(e => { setLoadingState(false); showToast('シフト編集データの読み込みに失敗しました: ' + (e && e.message || e), 'error'); if (doneCallback) doneCallback(); })
       .getAdminDesiredShifts(targetMonth);
   }
   function showAdminDailyPanel(day, dateStr) {
@@ -1409,6 +1409,10 @@
     showAdminDailyPanel(editingDay, selectedAdminDate);
   }
   function saveAdminGrid() {
+    if (!adminStaffData || adminStaffData.length === 0) {
+      showToast('スタッフデータが読み込まれていません。画面を再読み込みしてください。', 'error');
+      return;
+    }
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     const payload = {
       targetMonth,

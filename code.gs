@@ -512,6 +512,9 @@ function getAdminDesiredShifts(targetMonth) {
  * 管理者: 確定シフトの保存 (`Confirmed_Shifts` シートへの書き込み)
  */
 function saveConfirmedShifts(payload) {
+  if (!payload || !payload.data || payload.data.length === 0) {
+    return { success: false, message: 'スタッフデータが空です。画面を再読み込みしてください。' };
+  }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Confirmed_Shifts');
   const headerRow = ['Date', 'UserID', 'StartTime', 'EndTime', 'RestTime', 'Position'];
