@@ -20,6 +20,7 @@
   let selectedAdminDate = null;
   let hasUnsavedChanges = false; // 希望提出の未保存状態を追跡
   let currentCalendarView = 'calendar'; // 'calendar' or 'matrix'
+  let currentHalfPeriod = 'all'; // 'all', 'first', 'second'
   // 15分単位の時間リスト
   const timeOptions = [];
   for (let h = 0; h < 29; h++) { // 0:00 ~ 28:45 (翌日04:45まで対応)
@@ -251,6 +252,48 @@
       renderMatrix();
     }
   }
+  function switchHalfPeriod(period) {
+    currentHalfPeriod = period;
+    document.getElementById('half-btn-all').classList.toggle('active', period === 'all');
+    document.getElementById('half-btn-first').classList.toggle('active', period === 'first');
+    document.getElementById('half-btn-second').classList.toggle('active', period === 'second');
+    renderCalendar();
+  }
+  // 月選択ピッカー
+  let pickerYear = new Date().getFullYear();
+  function openMonthPicker() {
+    pickerYear = currentYear;
+    document.getElementById('picker-year').textContent = `${pickerYear}年`;
+    renderPickerMonths();
+    document.getElementById('month-picker-modal').classList.add('show');
+  }
+  function closeMonthPicker() {
+    document.getElementById('month-picker-modal').classList.remove('show');
+  }
+  function changePickerYear(delta) {
+    pickerYear += delta;
+    document.getElementById('picker-year').textContent = `${pickerYear}年`;
+    renderPickerMonths();
+  }
+  function renderPickerMonths() {
+    const container = document.getElementById('picker-months');
+    container.innerHTML = '';
+    for (let m = 1; m <= 12; m++) {
+      const btn = document.createElement('button');
+      const isActive = (pickerYear === currentYear && m === currentMonth);
+      btn.className = isActive ? 'btn-add' : 'btn-secondary';
+      btn.style.cssText = 'padding:0.6rem 0; font-size:0.95rem; font-weight:700; border-radius:var(--radius-md);';
+      btn.textContent = `${m}月`;
+      btn.addEventListener('click', () => {
+        currentYear = pickerYear;
+        currentMonth = m;
+        selectedDates.clear();
+        closeMonthPicker();
+        refreshData();
+      });
+      container.appendChild(btn);
+    }
+  }
   function handlePeriodChange() {
     selectedDates.clear();
     updateBatchInputUI();
@@ -337,11 +380,6 @@
     const firstDay  = new Date(currentYear, currentMonth - 1, 1).getDay();
     const lastDate  = new Date(currentYear, currentMonth, 0).getDate();
     // 常に1ヶ月分を表示
-    let startDate = 1, endDate = lastDate;
-    
-    // 今日の日付から前半・後半を判定し、アクティブでない期間を視覚的に薄くする
-    const isFirstHalfActive = today.getDate() <= 15;
-
     // カレンダーグリッドの先頭: 月初の曜日オフセット
     let offsetDay = firstDay; 
 
@@ -354,13 +392,11 @@
       const dateStr    = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
       const cell       = document.createElement('div');
       cell.className   = 'cal-cell';
-      
-      // 前半・後半の視認性コントロール（提出・管理者モードのみ）
-      if (currentMode === 'submit' || currentMode === 'admin') {
-        const isCurrentCellFirstHalf = i <= 15;
-        if (isCurrentCellFirstHalf !== isFirstHalfActive) {
-          cell.style.opacity = '0.5'; // アクティブでない期間を薄くする
-        }
+
+      // 前半/後半フィルター
+      if (currentMode === 'submit') {
+        if (currentHalfPeriod === 'first' && i > 15) { cell.style.display = 'none'; body.appendChild(cell); continue; }
+        if (currentHalfPeriod === 'second' && i <= 15) { cell.style.display = 'none'; body.appendChild(cell); continue; }
       }
 
       const dayOfWeek  = new Date(currentYear, currentMonth - 1, i).getDay();
@@ -443,19 +479,19 @@
           let shown = 0;
           badgesHtml += '<div class="cell-members-container">';
 
-          // ポジション順で名前を表示
-          const posOrder = ['社員', 'リーダー', 'キッチン', 'ホール'];
-          const allPositions = [...new Set([...posOrder, ...Object.keys(posGroups)])];
+          // 自分を最優先、次に社員、その後ポジション順
+          const meFirst = members.filter(m => m.userId === currentStaffId);
+          const staff = members.filter(m => m.userId !== currentStaffId && (m.position === '社員' || m.position === 'リーダー'));
+          const others = members.filter(m => m.userId !== currentStaffId && m.position !== '社員' && m.position !== 'リーダー');
+          const sortedMembers = [...meFirst, ...staff, ...others];
 
-          for (const pos of allPositions) {
-            if (!posGroups[pos]) continue;
-            for (const m of posGroups[pos]) {
-              if (shown < maxNames) {
-                const shortName = m.name.split(/\s+/)[0];
-                badgesHtml += `<span class="cell-name-chip ${pos}">${shortName}</span>`;
-                shown++;
-              }
-            }
+          for (const m of sortedMembers) {
+            if (shown >= maxNames) break;
+            const shortName = m.name.split(/\s+/)[0];
+            const pos = m.position || 'その他';
+            const isMe = m.userId === currentStaffId;
+            badgesHtml += `<span class="cell-name-chip ${pos}" ${isMe ? 'style="outline:2px solid var(--c-primary); outline-offset:-1px;"' : ''}>${shortName}</span>`;
+            shown++;
           }
 
           if (members.length > maxNames) {
@@ -1506,6 +1542,9 @@
       listSection.style.display    = 'block';
       myshiftTabs.style.display    = 'none';
       document.getElementById('view-toggle-area').style.display = 'none';
+      document.getElementById('half-toggle-area').style.display = 'flex';
+      currentHalfPeriod = 'all';
+      switchHalfPeriod('all');
       switchCalendarView('calendar');
       fabBtn.style.display         = '';
       btnSaveGas.style.display     = 'flex';
@@ -1531,6 +1570,7 @@
       listSection.style.display    = 'block';
       myshiftTabs.style.display    = 'flex';
       document.getElementById('view-toggle-area').style.display = 'none';
+      document.getElementById('half-toggle-area').style.display = 'none';
       switchCalendarView('calendar');
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
@@ -1551,6 +1591,7 @@
       rightPanel.style.display     = 'none';
       myshiftTabs.style.display    = 'none';
       document.getElementById('view-toggle-area').style.display = 'flex';
+      document.getElementById('half-toggle-area').style.display = 'none';
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'none';
@@ -1572,6 +1613,7 @@
       listSection.style.display    = 'none';
       myshiftTabs.style.display    = 'none';
       document.getElementById('view-toggle-area').style.display = 'flex';
+      document.getElementById('half-toggle-area').style.display = 'none';
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'flex';

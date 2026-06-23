@@ -157,6 +157,23 @@
         </div>
       </div>
     </div>
+    <!-- ===== 月選択モーダル ===== -->
+    <div id="month-picker-modal" class="modal-overlay" onclick="if(event.target===this) closeMonthPicker()">
+      <div class="modal-content" style="max-width: 340px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem;">
+          <h3 style="margin:0; font-weight:800; font-size:1.1rem;">年月を選択</h3>
+          <button class="btn-remove" onclick="closeMonthPicker()" style="padding:0.4rem;">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:0.5rem; margin-bottom:1rem;">
+          <button class="icon-btn" onclick="changePickerYear(-1)"><span class="material-symbols-outlined">chevron_left</span></button>
+          <span id="picker-year" style="font-weight:800; font-size:1.1rem; min-width:4rem; text-align:center;"></span>
+          <button class="icon-btn" onclick="changePickerYear(1)"><span class="material-symbols-outlined">chevron_right</span></button>
+        </div>
+        <div id="picker-months" style="display:grid; grid-template-columns:repeat(3,1fr); gap:0.5rem;"></div>
+      </div>
+    </div>
     <!-- ===== トースト通知 ===== -->
     <div id="toast" class="toast toast-success">
       <span class="material-symbols-outlined">check_circle</span>
@@ -232,10 +249,16 @@
               <button class="icon-btn" onclick="changeMonth(-1)" aria-label="前月">
                 <span class="material-symbols-outlined">chevron_left</span>
               </button>
-              <h2 id="calendar-title">2026年6月</h2>
+              <h2 id="calendar-title" onclick="openMonthPicker()" style="cursor:pointer;">2026年6月</h2>
               <button class="icon-btn" onclick="changeMonth(1)" aria-label="翌月">
                 <span class="material-symbols-outlined">chevron_right</span>
               </button>
+            </div>
+            <!-- 前半/後半切り替え (提出画面用) -->
+            <div class="view-toggle" id="half-toggle-area" style="display:none;">
+              <button class="view-toggle-btn active" id="half-btn-all" onclick="switchHalfPeriod('all')">全体</button>
+              <button class="view-toggle-btn" id="half-btn-first" onclick="switchHalfPeriod('first')">前半</button>
+              <button class="view-toggle-btn" id="half-btn-second" onclick="switchHalfPeriod('second')">後半</button>
             </div>
             <!-- 表示形式の切り替え (全体シフト / 管理者用) -->
             <div class="view-toggle" id="view-toggle-area" style="display:none;">
