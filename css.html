@@ -258,10 +258,10 @@
   /* Calendar */
   .calendar-card {
     background: var(--c-surface); border-radius: 28px; box-shadow: var(--shadow-lg), var(--shadow-glow);
-    padding: 2.5rem; border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(16px);
+    padding: 2rem; border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(16px);
     transition: opacity 0.25s ease;
   }
-  .calendar-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 2rem; }
+  .calendar-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 2rem; }
   .calendar-header h2 { margin: 0; font-size: 1.75rem; font-weight: 800; min-width: 160px; text-align: center; letter-spacing: -0.02em; }
   
   .month-nav {
@@ -275,8 +275,8 @@
   }
   .icon-btn:hover { color: var(--c-primary); transform: scale(1.05); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
   
-  .calendar-header-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 1rem; border-bottom: 2px solid var(--c-border); padding-bottom: 0.75rem; }
-  .calendar-body-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .calendar-header-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 1rem; border-bottom: 2px solid var(--c-border); padding-bottom: 0.75rem; }
+  .calendar-body-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .day-name { text-align: center; font-weight: 800; font-size: 0.9rem; color: var(--c-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
   
   /* View Toggle */
@@ -322,6 +322,7 @@
     background: white; position: relative; overflow: hidden;
   }
   .cal-cell.empty { border: none; background: transparent; cursor: default; }
+  .cal-cell.half-hidden { visibility: hidden; pointer-events: none; min-height: 0; padding: 0; border: none; }
   .cal-cell.disabled { opacity: 0.3; cursor: not-allowed; background: hsl(210, 30%, 98%); border-color: transparent; filter: grayscale(1); }
 
   .cal-cell:not(.empty):not(.disabled):hover {
@@ -376,6 +377,8 @@
   }
   
   /* Form Inputs */
+  .form-row { display: flex; gap: 0.75rem; }
+  .form-group.half { flex: 1; min-width: 0; }
   .form-group label { display: block; font-size: 0.8rem; font-weight: 800; color: var(--c-text-muted); margin-bottom: 0.5rem; }
   .form-group select, .form-group input {
     width: 100%; padding: 0.85rem 1rem; border: 2px solid var(--c-border); border-radius: var(--radius-md); 
@@ -463,9 +466,9 @@
         radial-gradient(ellipse at 30% 0%, hsla(235, 80%, 92%, 0.4) 0%, transparent 60%);
     }
 
-    .main-content { padding: 1.25rem 1rem 6rem; }
-    .main-header { margin-bottom: 1.5rem; }
-    .main-header h1 { font-size: 1.4rem; }
+    .main-content { padding: 1rem 0.5rem 5rem; }
+    .main-header { margin-bottom: 1rem; gap: 0.5rem; flex-wrap: wrap; }
+    .main-header h1 { font-size: 1.2rem; }
 
     .sidebar {
       position: fixed; left: 0; top: 0; bottom: 0; z-index: 200;
@@ -475,70 +478,73 @@
     .sidebar.open { transform: translateX(0); }
     .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
 
-    /* Calendar mobile optimization */
+    /* Calendar mobile */
     .calendar-card {
-      padding: 1rem 0.75rem; border-radius: 20px;
-      box-shadow: var(--shadow-md); margin: 0 -0.25rem;
+      padding: 0.6rem 0.4rem; border-radius: 16px;
+      box-shadow: var(--shadow-sm); margin: 0;
     }
-    .calendar-header { gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: nowrap; }
-    .calendar-header h2 { font-size: 1.15rem; min-width: 120px; }
+    .calendar-header {
+      gap: 0.4rem; margin-bottom: 0.6rem;
+      flex-direction: column; align-items: stretch;
+    }
+    .calendar-header .month-nav { align-self: center; }
+    .calendar-header h2 { font-size: 1.05rem; min-width: auto; }
 
-    .month-nav { padding: 0.2rem; }
-    .icon-btn { width: 36px; height: 36px; }
+    .month-nav { padding: 0.15rem; }
+    .icon-btn { width: 32px; height: 32px; }
+    .icon-btn .material-symbols-outlined { font-size: 1.1rem; }
 
-    .calendar-header-row { gap: 4px; margin-bottom: 0.5rem; padding-bottom: 0.5rem; }
-    .day-name { font-size: 0.75rem; }
-    .calendar-body-grid { gap: 4px; }
+    .calendar-header-row { gap: 2px; margin-bottom: 0.3rem; padding-bottom: 0.3rem; border-bottom-width: 1px; }
+    .day-name { font-size: 0.7rem; }
+    .calendar-body-grid { gap: 2px; }
 
     .cal-cell {
-      min-height: 58px; padding: 0.3rem; border-radius: 10px; border-width: 1px;
+      min-height: 52px; padding: 0.2rem; border-radius: 8px; border-width: 1px;
     }
+    .cal-cell.half-hidden { min-height: 0; }
     .cal-cell:not(.empty):not(.disabled):hover {
       transform: none; box-shadow: 0 0 0 1.5px var(--c-primary);
     }
-    .cal-cell.selected {
-      box-shadow: 0 0 0 2px hsl(235, 100%, 85%);
-    }
-    .cal-cell.today {
-      box-shadow: inset 0 0 0 1.5px var(--c-primary);
-    }
+    .cal-cell.selected { box-shadow: 0 0 0 2px hsl(235, 100%, 85%); }
+    .cal-cell.today { box-shadow: inset 0 0 0 1.5px var(--c-primary); }
 
-    .cell-date { margin-bottom: 2px; }
-    .cell-date-num { width: 22px; height: 22px; font-size: 0.8rem; border-radius: 6px; }
-    .cell-shift { font-size: 0.6rem; padding: 0.15rem 0.2rem; border-radius: 4px; letter-spacing: 0; }
-    .holiday-name-label { font-size: 0.5rem; margin-top: 0.1rem; }
+    .cell-date { margin-bottom: 1px; }
+    .cell-date-num { width: 20px; height: 20px; font-size: 0.75rem; border-radius: 5px; }
+    .cell-shift { font-size: 0.55rem; padding: 0.1rem 0.15rem; border-radius: 3px; letter-spacing: 0; }
+    .holiday-name-label { font-size: 0.45rem; margin-top: 0; line-height: 1.1; }
 
     /* Tabs mobile */
     .tab-container {
-      width: 100%; margin-bottom: 1.25rem; padding: 0.3rem;
+      width: 100%; margin-bottom: 0.75rem; padding: 0.2rem;
     }
     .tab-btn {
-      flex: 1; justify-content: center; padding: 0.55rem 0.5rem; font-size: 0.8rem; gap: 0.25rem;
+      flex: 1; justify-content: center; padding: 0.45rem 0.3rem; font-size: 0.75rem; gap: 0.2rem;
     }
-    .tab-btn .material-symbols-outlined { font-size: 1rem; }
+    .tab-btn .material-symbols-outlined { font-size: 0.9rem; }
 
-    /* View Toggle mobile */
-    .view-toggle { border-radius: 8px; }
-    .view-toggle-btn { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-    .view-toggle-btn .material-symbols-outlined { font-size: 0.95rem; }
+    /* View Toggle & Half Toggle mobile */
+    .view-toggle { border-radius: 6px; padding: 0.15rem; align-self: center; }
+    .view-toggle-btn { padding: 0.3rem 0.5rem; font-size: 0.72rem; border-radius: 5px; }
+    .view-toggle-btn .material-symbols-outlined { font-size: 0.85rem; }
 
     /* Buttons mobile */
     .btn-save {
-      padding: 0.7rem 1.25rem; font-size: 0.85rem; border-radius: 100px;
-      position: fixed; bottom: 16px; right: 16px; left: auto; z-index: 130;
-      box-shadow: 0 8px 28px -4px rgba(79, 70, 229, 0.5);
+      padding: 0.6rem 1rem; font-size: 0.8rem; border-radius: 100px;
+      position: fixed; bottom: 12px; right: 12px; left: auto; z-index: 130;
+      box-shadow: 0 6px 20px -4px rgba(79, 70, 229, 0.5);
     }
 
     /* Matrix mobile */
-    .matrix-table-container { border-radius: 12px; margin: 0 -0.25rem; }
-    .matrix-table th, .matrix-table td { padding: 0.35rem; font-size: 0.75rem; }
-    .matrix-cell-shift, .matrix-cell-free { font-size: 0.65rem; padding: 0.15rem 0.3rem; }
+    .matrix-table-container { border-radius: 10px; margin: 0; }
+    .matrix-table th, .matrix-table td { padding: 0.25rem; font-size: 0.68rem; }
+    .matrix-table th.matrix-name-col, .matrix-table td.matrix-name-col { min-width: 60px; font-size: 0.7rem; }
+    .matrix-cell-shift, .matrix-cell-free { font-size: 0.58rem; padding: 0.1rem 0.2rem; }
 
     /* Bottom Sheet */
     .right-panel {
       position: fixed; left: 0; right: 0; bottom: 0; width: 100%;
       height: 80vh; max-height: 80vh;
-      border-radius: 24px 24px 0 0;
+      border-radius: 20px 20px 0 0;
       transform: translateY(100%);
       transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
       z-index: 150;
@@ -551,26 +557,26 @@
 
     .bottom-sheet-handle {
       display: block; width: 48px; height: 5px; background: hsl(215, 20%, 82%);
-      border-radius: 100px; margin: 14px auto 8px; flex-shrink: 0;
+      border-radius: 100px; margin: 12px auto 6px; flex-shrink: 0;
     }
 
-    .panel-section { padding: 1.25rem 1.25rem; }
-    .panel-section h3 { font-size: 0.95rem; }
+    .panel-section { padding: 1rem; }
+    .panel-section h3 { font-size: 0.9rem; }
     .panel-section.list-section { padding-bottom: 2rem; }
 
     .form-group select, .form-group input {
-      padding: 0.75rem 0.85rem; font-size: 0.95rem; border-radius: var(--radius-sm);
+      padding: 0.65rem 0.75rem; font-size: 0.9rem; border-radius: var(--radius-sm);
     }
-    .form-group label { font-size: 0.75rem; margin-bottom: 0.4rem; }
-    .form-row { gap: 0.5rem; }
+    .form-group label { font-size: 0.72rem; margin-bottom: 0.35rem; }
+    .form-row { gap: 0.4rem; }
 
-    .btn-add, .btn-secondary { padding: 0.8rem; font-size: 0.95rem; border-radius: var(--radius-sm); }
+    .btn-add, .btn-secondary { padding: 0.7rem; font-size: 0.9rem; border-radius: var(--radius-sm); }
 
-    .request-item { padding: 0.85rem; }
-    .req-date { width: 48px; font-size: 0.9rem; }
-    .req-time { font-size: 0.8rem; padding: 0.25rem 0.6rem; }
+    .request-item { padding: 0.7rem; }
+    .req-date { width: 42px; font-size: 0.85rem; }
+    .req-time { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
 
-    .selected-count-display { font-size: 0.8rem; padding: 0.4rem 0.75rem; }
+    .selected-count-display { font-size: 0.75rem; padding: 0.35rem 0.65rem; margin-bottom: 0.75rem; }
 
     /* Overlay */
     .overlay {
@@ -583,80 +589,97 @@
     /* FAB */
     .fab-btn {
       display: flex; align-items: center; justify-content: center;
-      position: fixed; right: 20px; bottom: 20px;
-      width: 60px; height: 60px; border-radius: 50%;
+      position: fixed; right: 16px; bottom: 16px;
+      width: 52px; height: 52px; border-radius: 50%;
       background: linear-gradient(135deg, var(--c-primary), hsl(270, 75%, 52%));
       color: white; border: none;
-      box-shadow: 0 8px 24px rgba(79, 70, 229, 0.4);
+      box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
       z-index: 130;
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     .fab-btn:active { transform: scale(0.88); }
-    .fab-btn span { font-size: 26px; }
+    .fab-btn span { font-size: 22px; }
 
     /* Modals mobile */
     .modal-content {
-      width: 94%; padding: 1.75rem 1.5rem; border-radius: 24px;
+      width: 94%; padding: 1.5rem 1.25rem; border-radius: 20px;
       max-height: 85vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
     }
-    .modal-header-accent { width: 56px; height: 56px; border-radius: 18px; font-size: 1.6rem; margin-bottom: 1.25rem; }
-    .login-brand h2 { font-size: 1.45rem; }
+    .modal-header-accent { width: 50px; height: 50px; border-radius: 16px; font-size: 1.4rem; margin-bottom: 1rem; }
+    .login-brand h2 { font-size: 1.35rem; }
 
     /* Toast mobile */
     .toast {
-      bottom: 20px; padding: 0.85rem 1.75rem; font-size: 0.9rem;
-      max-width: calc(100vw - 32px); border-radius: 100px;
+      bottom: 16px; padding: 0.7rem 1.25rem; font-size: 0.82rem;
+      max-width: calc(100vw - 24px); border-radius: 100px;
     }
 
     /* Coworker list mobile */
-    .coworker-item { padding: 0.85rem 1rem; }
-    .coworker-name { font-size: 0.9rem; gap: 0.4rem; }
-    .coworker-time { font-size: 0.9rem; }
-    .pos-badge { font-size: 0.65rem; padding: 0.15rem 0.5rem; }
+    .coworker-item { padding: 0.75rem 0.85rem; }
+    .coworker-name { font-size: 0.85rem; gap: 0.3rem; }
+    .coworker-time { font-size: 0.82rem; }
+    .pos-badge { font-size: 0.6rem; padding: 0.12rem 0.45rem; }
 
     /* Admin cell mobile */
-    .cell-admin-badge { font-size: 0.55rem; padding: 0.1rem 0.3rem; gap: 1px; }
-    .cell-admin-badge .material-symbols-outlined { font-size: 0.6rem !important; }
-    .cell-admin-progress-label { font-size: 0.5rem; margin-top: 1px; }
-    .cell-admin-progress { height: 3px; margin-top: 1px; }
+    .cell-admin-stats { gap: 1px; }
+    .cell-admin-badge { font-size: 0.48rem; padding: 0.05rem 0.2rem; gap: 1px; border-radius: 3px; }
+    .cell-admin-badge .material-symbols-outlined { font-size: 0.5rem !important; }
+    .cell-admin-progress-label { font-size: 0.45rem; margin-top: 1px; }
+    .cell-admin-progress { height: 2px; margin-top: 1px; }
 
     /* All-Shift chips mobile */
-    .cell-name-chip { font-size: 0.5rem; padding: 0.05rem 0.25rem; border-radius: 3px; }
-    .cell-more-chip { font-size: 0.5rem; padding: 0.05rem 0.25rem; }
-    .cell-total-count { font-size: 0.55rem; }
+    .cell-members-container { gap: 1px; }
+    .cell-name-chip { font-size: 0.45rem; padding: 0.02rem 0.18rem; border-radius: 2px; line-height: 1.2; }
+    .cell-more-chip { font-size: 0.45rem; padding: 0.02rem 0.18rem; }
+    .cell-total-count { font-size: 0.5rem; margin-top: 1px; }
 
     /* Admin daily panel mobile */
-    .admin-daily-detail-panel { padding: 1.25rem; border-radius: 16px; margin-top: 1rem; }
-    .admin-worker-card { padding: 0.85rem 1rem; }
-    .admin-edit-btn { padding: 0.45rem 0.85rem; font-size: 0.75rem; }
-    .admin-edit-btn .material-symbols-outlined { font-size: 0.9rem; }
+    .admin-daily-detail-panel { padding: 1rem; border-radius: 14px; margin-top: 0.75rem; }
+    .admin-worker-card { padding: 0.75rem 0.85rem; border-radius: 10px; }
+    .admin-edit-btn { padding: 0.35rem 0.7rem; font-size: 0.7rem; }
+    .admin-edit-btn .material-symbols-outlined { font-size: 0.85rem; }
 
     /* Confirmed detail mobile */
-    .confirmed-detail-card { padding: 1.25rem; border-radius: 16px; }
-    .confirmed-detail-row { font-size: 0.9rem; padding: 0.65rem 0; }
-    .confirmed-detail-label { font-size: 0.8rem; }
+    .confirmed-detail-card { padding: 1rem; border-radius: 14px; }
+    .confirmed-detail-row { font-size: 0.85rem; padding: 0.55rem 0; }
+    .confirmed-detail-label { font-size: 0.75rem; }
   }
 
   /* Small phones (SE, mini, etc.) */
   @media (max-width: 380px) {
-    .main-content { padding: 1rem 0.75rem 6rem; }
-    .main-header h1 { font-size: 1.25rem; }
+    .main-content { padding: 0.75rem 0.35rem 5rem; }
+    .main-header h1 { font-size: 1.1rem; }
 
-    .calendar-card { padding: 0.75rem 0.5rem; border-radius: 16px; }
-    .calendar-header h2 { font-size: 1.05rem; min-width: 100px; }
-    .calendar-header-row { gap: 2px; }
-    .calendar-body-grid { gap: 2px; }
-    .day-name { font-size: 0.7rem; }
+    .calendar-card { padding: 0.4rem 0.25rem; border-radius: 12px; }
+    .calendar-header h2 { font-size: 0.95rem; }
+    .calendar-header-row { gap: 1px; }
+    .calendar-body-grid { gap: 1px; }
+    .day-name { font-size: 0.65rem; }
 
-    .cal-cell { min-height: 50px; padding: 0.2rem; border-radius: 8px; }
-    .cell-date-num { width: 20px; height: 20px; font-size: 0.75rem; }
-    .cell-shift { font-size: 0.55rem; padding: 0.1rem; }
+    .cal-cell { min-height: 46px; padding: 0.15rem; border-radius: 6px; }
+    .cell-date-num { width: 18px; height: 18px; font-size: 0.7rem; border-radius: 4px; }
+    .cell-shift { font-size: 0.5rem; padding: 0.05rem 0.1rem; }
+    .holiday-name-label { display: none; }
 
-    .tab-btn { font-size: 0.75rem; padding: 0.5rem 0.3rem; }
+    .tab-btn { font-size: 0.7rem; padding: 0.4rem 0.2rem; }
+    .view-toggle-btn { padding: 0.25rem 0.4rem; font-size: 0.65rem; }
 
-    .right-panel { height: 85vh; max-height: 85vh; border-radius: 20px 20px 0 0; }
-    .panel-section { padding: 1rem; }
-    .modal-content { padding: 1.5rem 1.25rem; border-radius: 20px; }
+    .right-panel { height: 85vh; max-height: 85vh; border-radius: 18px 18px 0 0; }
+    .panel-section { padding: 0.85rem; }
+    .modal-content { padding: 1.25rem 1rem; border-radius: 18px; }
+
+    .cell-admin-badge { font-size: 0.42rem; padding: 0.02rem 0.15rem; }
+    .cell-name-chip { font-size: 0.4rem; padding: 0.01rem 0.12rem; }
+  }
+
+  /* Mobile landscape */
+  @media (max-width: 900px) and (orientation: landscape) {
+    .main-content { padding: 0.75rem 1rem 4rem; }
+    .calendar-card { padding: 0.5rem; }
+    .calendar-header { flex-direction: row; align-items: center; }
+    .cal-cell { min-height: 48px; }
+    .right-panel { height: 90vh; max-height: 90vh; }
+    .modal-content { max-height: 90vh; }
   }
 
   /* Tablet landscape optimization */

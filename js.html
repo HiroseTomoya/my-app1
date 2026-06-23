@@ -395,8 +395,8 @@
 
       // 前半/後半フィルター
       if (currentMode === 'submit') {
-        if (currentHalfPeriod === 'first' && i > 15) { cell.style.display = 'none'; body.appendChild(cell); continue; }
-        if (currentHalfPeriod === 'second' && i <= 15) { cell.style.display = 'none'; body.appendChild(cell); continue; }
+        if (currentHalfPeriod === 'first' && i > 15) { cell.classList.add('half-hidden'); }
+        if (currentHalfPeriod === 'second' && i <= 15) { cell.classList.add('half-hidden'); }
       }
 
       const dayOfWeek  = new Date(currentYear, currentMonth - 1, i).getDay();
