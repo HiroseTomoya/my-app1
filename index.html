@@ -199,11 +199,6 @@
            メインコンテンツ
       ========================================== -->
       <main class="main-content">
-        <!-- 提出期限ロックバナー -->
-        <div id="deadline-lock-banner" class="deadline-lock-banner" style="display:none;">
-          <span class="material-symbols-outlined">lock</span>
-          <span id="deadline-lock-message">シフト希望の提出期限を過ぎています。</span>
-        </div>
         <div class="main-header">
           <div class="header-left">
             <button class="mobile-menu-btn" onclick="toggleSidebar()" id="mobile-menu-btn" aria-label="メニューを開く">
@@ -336,17 +331,13 @@
             </div>
           </div>
         </div>
-        <!-- [管理者用] 設定・締切フォーム -->
+        <!-- [管理者用] 未提出者一覧 -->
         <div class="panel-section" id="admin-settings-section" style="display:none;">
-          <h3 style="margin-top:0; font-weight:800; margin-bottom:1rem; font-size:1rem;">システム設定</h3>
-          <div class="form-group">
-            <label>シフト提出締切日</label>
-            <select id="setting-deadline-day" onchange="changeDeadlineDaySetting()">
-              <!-- 1〜28日まで生成 -->
-            </select>
-            <span style="font-size:0.75rem; color:var(--c-text-muted); display:block; margin-top:0.5rem; line-height:1.6;">
-              この日付を過ぎると翌月のシフト希望提出・変更ができなくなります。
-            </span>
+          <h3 style="margin-top:0; font-weight:800; margin-bottom:0.75rem; font-size:1rem;">
+            <span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle; margin-right:0.25rem;">warning</span>シフト未提出者
+          </h3>
+          <div id="unsubmitted-staff-list">
+            <div class="empty-msg" style="font-size:0.85rem;">読み込み中...</div>
           </div>
         </div>
         <!-- 提出・確認リスト一覧 -->

@@ -18,8 +18,6 @@
   // 管理者編集用 (userId -> { shifts: { day -> {start, end, restTime, position} } })
   let adminStaffData = [];
   let selectedAdminDate = null;
-  let systemDeadlineDay = 20;
-  let isDeadlineLocked = false; // 提出期限ロック状態
   let hasUnsavedChanges = false; // 希望提出の未保存状態を追跡
   let currentCalendarView = 'calendar'; // 'calendar' or 'matrix'
   // 15分単位の時間リスト
@@ -33,7 +31,6 @@
   }
   document.addEventListener('DOMContentLoaded', () => {
     initTimeDropdowns();
-    initDeadlineDropdown();
     // Enterキーでログイン
     document.getElementById('login-password').addEventListener('keydown', e => {
       if (e.key === 'Enter') handleLogin();
@@ -74,18 +71,6 @@
         sel.appendChild(opt);
       });
     });
-  }
-  function initDeadlineDropdown() {
-    const sel = document.getElementById('setting-deadline-day');
-    if (!sel) return;
-    sel.innerHTML = '';
-    for (let d = 1; d <= 28; d++) {
-      const opt = document.createElement('option');
-      opt.value = d;
-      opt.textContent = `毎月 ${d} 日`;
-      if (d === 20) opt.selected = true;
-      sel.appendChild(opt);
-    }
   }
   // =========================================
   // 認証
@@ -403,7 +388,7 @@
         }
         if (selectedDates.has(dateStr)) cell.classList.add('selected');
         cell.innerHTML = innerHTML;
-        if (isInPeriod && !isDeadlineLocked) {
+        if (isInPeriod) {
           cell.addEventListener('click', () => toggleDateSelection(dateStr, cell));
         } else {
           cell.style.cursor = 'default';
@@ -1233,6 +1218,7 @@
         },
       ];
       renderCalendar();
+      renderUnsubmittedStaffList();
       setLoadingState(false);
       if (selectedAdminDate) {
         const day = Number(selectedAdminDate.split('-')[2]);
@@ -1245,6 +1231,7 @@
       .withSuccessHandler(data => {
         adminStaffData = data;
         renderCalendar();
+        renderUnsubmittedStaffList();
         setLoadingState(false);
         if (selectedAdminDate) {
           const day = Number(selectedAdminDate.split('-')[2]);
@@ -1452,60 +1439,38 @@
       .saveConfirmedShifts(payload);
   }
   // =========================================
-  // 管理者：締切設定
+  // 管理者：未提出者一覧
   // =========================================
-  function loadDeadlineDay() {
-    if (typeof google === 'undefined') {
-      document.getElementById('setting-deadline-day').value = '20';
+  function renderUnsubmittedStaffList() {
+    const container = document.getElementById('unsubmitted-staff-list');
+    if (!container) return;
+    if (!adminStaffData || adminStaffData.length === 0) {
+      container.innerHTML = '<div class="empty-msg" style="font-size:0.85rem;">スタッフデータを読み込み中...</div>';
       return;
     }
-    google.script.run
-      .withSuccessHandler(day => {
-        systemDeadlineDay = day;
-        document.getElementById('setting-deadline-day').value = String(day);
-      })
-      .getDeadlineDay();
-  }
-  function changeDeadlineDaySetting() {
-    const day = Number(document.getElementById('setting-deadline-day').value);
-    if (typeof google === 'undefined') {
-      systemDeadlineDay = day;
-      showToast(`締切日を毎月 ${day} 日に変更しました (デモ)`);
+    const unsubmitted = adminStaffData.filter(staff => {
+      if (staff.role === '管理者') return false;
+      const hasAnyDesired = Object.values(staff.shifts).some(d => d && d.desired);
+      return !hasAnyDesired;
+    });
+    if (unsubmitted.length === 0) {
+      container.innerHTML = `<div style="text-align:center; padding:1.5rem 0.5rem; color:var(--c-primary);">
+        <span class="material-symbols-outlined" style="font-size:2rem; display:block; margin-bottom:0.5rem;">check_circle</span>
+        <span style="font-weight:700; font-size:0.9rem;">全員提出済みです</span>
+      </div>`;
       return;
     }
-    google.script.run
-      .withSuccessHandler(() => {
-        systemDeadlineDay = day;
-        showToast(`締切日を毎月 ${day} 日に保存しました`);
-      })
-      .saveDeadlineDay(day);
-  }
-  function checkSubmissionDeadline() {
-    const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
-    const banner  = document.getElementById('deadline-lock-banner');
-    const btnSave = document.getElementById('btn-save-gas');
-    if (typeof google === 'undefined') {
-      banner.style.display = 'none';
-      isDeadlineLocked = false;
-      btnSave.disabled = false;
-      renderCalendar();
-      return;
-    }
-    google.script.run
-      .withSuccessHandler(res => {
-        isDeadlineLocked = res.isLocked;
-        if (res.isLocked && currentMode === 'submit') {
-          banner.style.display = 'flex';
-          document.getElementById('deadline-lock-message').textContent =
-            `シフト希望提出期限（${res.deadlineDateStr}）を過ぎています。新規提出・変更はできません。`;
-          btnSave.disabled = true;
-        } else {
-          banner.style.display = 'none';
-          btnSave.disabled = false;
-        }
-        renderCalendar();
-      })
-      .checkDeadlineStatus(targetMonth);
+    container.innerHTML = `<div style="font-size:0.8rem; color:var(--c-text-muted); margin-bottom:0.5rem;">${unsubmitted.length}名が未提出</div>`;
+    unsubmitted.forEach(staff => {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.6rem; border:1px solid hsl(350,80%,90%); background:var(--c-red-light); border-radius:var(--radius-md); margin-bottom:0.4rem;';
+      div.innerHTML = `
+        <span class="material-symbols-outlined" style="font-size:1rem; color:var(--c-red);">person_off</span>
+        <span style="font-weight:700; font-size:0.88rem;">${staff.name}</span>
+        <span class="pos-badge ${staff.defaultPosition}" style="margin-left:auto; font-size:0.7rem;">${staff.defaultPosition}</span>
+      `;
+      container.appendChild(div);
+    });
   }
   // =========================================
   // 画面遷移・モード切替
@@ -1526,10 +1491,7 @@
     const myshiftTabs     = document.getElementById('myshift-tabs');
     const adminDailyPanel = document.getElementById('admin-daily-panel');
     const listSection     = document.getElementById('list-section');
-    const banner          = document.getElementById('deadline-lock-banner');
     // リセット
-    banner.style.display = 'none';
-    isDeadlineLocked = false;
     adminDailyPanel.style.display = 'none';
     selectedAdminDate = null;
     if (mode === 'submit') {
@@ -1553,7 +1515,6 @@
       next.setMonth(next.getMonth() + 1);
       currentYear  = next.getFullYear();
       currentMonth = next.getMonth() + 1;
-      checkSubmissionDeadline();
       renderCalendar();
       loadHolidays(() => renderCalendar());
       loadSavedShiftRequests();
@@ -1619,7 +1580,6 @@
       next.setMonth(next.getMonth() + 1);
       currentYear  = next.getFullYear();
       currentMonth = next.getMonth() + 1;
-      loadDeadlineDay();
       renderCalendar();
       loadHolidays(() => renderCalendar());
       loadAdminDesiredShifts();
