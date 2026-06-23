@@ -23,8 +23,8 @@
   let currentHalfPeriod = 'all'; // 'all', 'first', 'second'
   // 15分単位の時間リスト
   const timeOptions = [];
-  for (let h = 0; h < 29; h++) { // 0:00 ~ 28:45 (翌日04:45まで対応)
-    const hh = String(h < 24 ? h : h).padStart(2, '0');
+  for (let h = 0; h < 24; h++) {
+    const hh = String(h).padStart(2, '0');
     for (let m = 0; m < 60; m += 15) {
       const mm = String(m).padStart(2, '0');
       timeOptions.push(`${hh}:${mm}`);
@@ -520,10 +520,10 @@
         if (isInPeriod && (desiredCount > 0 || confirmedCount > 0)) {
           innerHTML += '<div class="cell-admin-stats">';
           if (desiredCount > 0) {
-            innerHTML += `<div class="cell-admin-badge desired"><span class="material-symbols-outlined" style="font-size:0.7rem;">event_note</span>${desiredCount}人希望</div>`;
+            innerHTML += `<div class="cell-admin-badge desired">希${desiredCount}</div>`;
           }
           if (confirmedCount > 0) {
-            innerHTML += `<div class="cell-admin-badge confirmed"><span class="material-symbols-outlined" style="font-size:0.7rem;">check_circle</span>${confirmedCount}人確定</div>`;
+            innerHTML += `<div class="cell-admin-badge confirmed">確${confirmedCount}</div>`;
           }
           innerHTML += '</div>';
           // プログレスバー
