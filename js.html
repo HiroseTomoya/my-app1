@@ -1643,7 +1643,7 @@
     const adminUnsubInline = document.getElementById('admin-unsubmitted-inline');
     // リセット
     adminDailyPanel.style.display = 'none';
-    adminUnsubInline.style.display = 'none';
+    if (adminUnsubInline) adminUnsubInline.style.display = 'none';
     selectedAdminDate = null;
     if (mode === 'submit') {
       document.getElementById('nav-submit').classList.add('active');
@@ -1664,7 +1664,7 @@
       fabBtn.style.display         = '';
       btnSaveGas.style.display     = 'flex';
       btnSaveAdmin.style.display   = 'none';
-      btnTempSave.style.display    = 'flex';
+      if (btnTempSave) btnTempSave.style.display = 'flex';
       // 次月のシフト希望提出をデフォルトに
       const next = new Date();
       next.setMonth(next.getMonth() + 1);
@@ -1691,7 +1691,7 @@
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'none';
-      btnTempSave.style.display    = 'none';
+      if (btnTempSave) btnTempSave.style.display = 'none';
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
       activeMyShiftTab = 'confirmed';
@@ -1712,7 +1712,7 @@
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'none';
-      btnTempSave.style.display    = 'none';
+      if (btnTempSave) btnTempSave.style.display = 'none';
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
       renderCalendar();
@@ -1735,8 +1735,8 @@
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'flex';
-      btnTempSave.style.display    = 'flex';
-      adminUnsubInline.style.display = 'block';
+      if (btnTempSave) btnTempSave.style.display = 'flex';
+      if (adminUnsubInline) adminUnsubInline.style.display = 'block';
       // 翌月編集をデフォルトに
       const next = new Date();
       next.setMonth(next.getMonth() + 1);
