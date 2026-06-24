@@ -467,7 +467,7 @@
     }
 
     .main-content { padding: 1rem 0.5rem 5rem; }
-    .main-header { margin-bottom: 1rem; gap: 0.5rem; flex-wrap: wrap; }
+    .main-header { margin-bottom: 1.5rem; gap: 0.5rem; flex-wrap: wrap; }
     .main-header h1 { font-size: 1.2rem; }
 
     .sidebar {
@@ -529,10 +529,12 @@
 
     /* Buttons mobile */
     .btn-save {
-      padding: 0.5rem 0.85rem; font-size: 0.75rem; border-radius: 100px;
-      position: fixed; top: 12px; right: 12px; left: auto; z-index: 130;
-      box-shadow: 0 4px 16px -4px rgba(79, 70, 229, 0.5);
+      padding: 0.35rem 0.65rem; font-size: 0.68rem; border-radius: 100px;
+      position: fixed; top: 10px; right: 10px; left: auto; z-index: 130;
+      box-shadow: 0 3px 12px -3px rgba(79, 70, 229, 0.5);
+      gap: 0.3rem;
     }
+    .btn-save .material-symbols-outlined { font-size: 0.85rem; }
 
     /* Matrix mobile */
     .matrix-table-container { border-radius: 10px; margin: 0; }
@@ -859,11 +861,12 @@
   @media (max-width: 900px) {
     .weekday-btn { padding: 0.45rem 0; font-size: 0.78rem; border-radius: 6px; }
     #btn-temp-save {
-      position: fixed; top: 48px; right: 12px; z-index: 130;
-      padding: 0.4rem 0.75rem; font-size: 0.7rem; border-radius: 100px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1); background: white;
-      width: auto; display: none;
+      position: fixed; top: 42px; right: 10px; z-index: 130;
+      padding: 0.3rem 0.6rem; font-size: 0.65rem; border-radius: 100px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08); background: white;
+      width: auto; display: none; border-width: 1.5px;
     }
+    #btn-temp-save .material-symbols-outlined { font-size: 0.8rem; }
     .btn-temp-save.mobile-only { display: none !important; }
   }
 </style>
