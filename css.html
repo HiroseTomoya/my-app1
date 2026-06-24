@@ -858,10 +858,12 @@
 
   @media (max-width: 900px) {
     .weekday-btn { padding: 0.45rem 0; font-size: 0.78rem; border-radius: 6px; }
-    #btn-temp-save { display: none !important; }
-    .btn-temp-save.mobile-only {
-      display: flex; width: 100%; margin-top: 0.5rem;
-      padding: 0.55rem; font-size: 0.8rem; border-radius: var(--radius-sm);
+    #btn-temp-save {
+      position: fixed; top: 48px; right: 12px; z-index: 130;
+      padding: 0.4rem 0.75rem; font-size: 0.7rem; border-radius: 100px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1); background: white;
+      width: auto; display: none;
     }
+    .btn-temp-save.mobile-only { display: none !important; }
   }
 </style>
