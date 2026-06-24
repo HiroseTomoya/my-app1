@@ -738,6 +738,7 @@
     const count = selectedDates.size;
     document.getElementById('selected-count').textContent = count;
     document.getElementById('btn-batch-add').disabled = count === 0;
+    updateWeekdayButtons();
   }
   // =========================================
   // 従業員用：希望提出・一括入力
@@ -753,6 +754,7 @@
       shiftRequests.set(`${targetMonth}-10`, { start:'18:00', end:'23:00', memo:'' });
       hasUnsavedChanges = false;
       updateSubmitButtonState();
+      checkAndRestoreTempSave();
       renderCalendar();
       renderRequestList();
       setLoadingState(false);
@@ -764,6 +766,7 @@
         Object.keys(res).forEach(d => shiftRequests.set(d, res[d]));
         hasUnsavedChanges = false;
         updateSubmitButtonState();
+        checkAndRestoreTempSave();
         renderCalendar();
         renderRequestList();
         setLoadingState(false);
@@ -931,6 +934,7 @@
           showToast('シフト希望を提出しました！');
           hasUnsavedChanges = false;
           updateSubmitButtonState();
+          clearTempSave();
         } else {
           showToast('エラー: ' + res.message, 'error');
         }
@@ -1253,6 +1257,7 @@
           }
         },
       ];
+      checkAndRestoreTempSave();
       renderCalendar();
       renderUnsubmittedStaffList();
       setLoadingState(false);
@@ -1266,6 +1271,7 @@
     google.script.run
       .withSuccessHandler(data => {
         adminStaffData = data;
+        checkAndRestoreTempSave();
         renderCalendar();
         renderUnsubmittedStaffList();
         setLoadingState(false);
@@ -1460,6 +1466,7 @@
       .withSuccessHandler(res => {
         if (res.success) {
           showToast('確定シフトを保存し、従業員側に反映しました！');
+          clearTempSave();
         } else {
           showToast('保存エラー: ' + res.message, 'error');
         }
@@ -1479,9 +1486,12 @@
   // =========================================
   function renderUnsubmittedStaffList() {
     const container = document.getElementById('unsubmitted-staff-list');
+    const inlineContainer = document.getElementById('unsubmitted-staff-list-inline');
     if (!container) return;
+    const syncInline = () => { if (inlineContainer) inlineContainer.innerHTML = container.innerHTML; };
     if (!adminStaffData || adminStaffData.length === 0) {
       container.innerHTML = '<div class="empty-msg" style="font-size:0.85rem;">スタッフデータを読み込み中...</div>';
+      syncInline();
       return;
     }
     const unsubmitted = adminStaffData.filter(staff => {
@@ -1494,6 +1504,7 @@
         <span class="material-symbols-outlined" style="font-size:2rem; display:block; margin-bottom:0.5rem;">check_circle</span>
         <span style="font-weight:700; font-size:0.9rem;">全員提出済みです</span>
       </div>`;
+      syncInline();
       return;
     }
     container.innerHTML = `<div style="font-size:0.8rem; color:var(--c-text-muted); margin-bottom:0.5rem;">${unsubmitted.length}名が未提出</div>`;
@@ -1507,6 +1518,107 @@
       `;
       container.appendChild(div);
     });
+    syncInline();
+  }
+  // =========================================
+  // 曜日一括選択
+  // =========================================
+  function toggleWeekdaySelection(dayOfWeek) {
+    const lastDate = new Date(currentYear, currentMonth, 0).getDate();
+    const dates = [];
+    for (let i = 1; i <= lastDate; i++) {
+      const d = new Date(currentYear, currentMonth - 1, i);
+      if (d.getDay() === dayOfWeek) {
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        if (currentHalfPeriod === 'first' && i > 15) continue;
+        if (currentHalfPeriod === 'second' && i <= 15) continue;
+        dates.push(dateStr);
+      }
+    }
+    const allSelected = dates.every(d => selectedDates.has(d));
+    dates.forEach(d => {
+      if (allSelected) selectedDates.delete(d);
+      else selectedDates.add(d);
+    });
+    updateWeekdayButtons();
+    updateBatchInputUI();
+    renderCalendar();
+  }
+  function updateWeekdayButtons() {
+    const lastDate = new Date(currentYear, currentMonth, 0).getDate();
+    const btns = document.querySelectorAll('.weekday-btn');
+    btns.forEach((btn, idx) => {
+      const dates = [];
+      for (let i = 1; i <= lastDate; i++) {
+        const d = new Date(currentYear, currentMonth - 1, i);
+        if (d.getDay() === idx) {
+          const dateStr = `${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+          if (currentHalfPeriod === 'first' && i > 15) continue;
+          if (currentHalfPeriod === 'second' && i <= 15) continue;
+          dates.push(dateStr);
+        }
+      }
+      const allSelected = dates.length > 0 && dates.every(d => selectedDates.has(d));
+      btn.classList.toggle('active', allSelected);
+    });
+  }
+  // =========================================
+  // 一時保存 (localStorage)
+  // =========================================
+  function getTempSaveKey() {
+    const month = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    if (currentMode === 'submit') return `shift_temp_submit_${currentStaffId}_${month}`;
+    if (currentMode === 'admin') return `shift_temp_admin_${month}`;
+    return null;
+  }
+  function tempSave() {
+    const key = getTempSaveKey();
+    if (!key) return;
+    if (currentMode === 'submit') {
+      const data = {};
+      shiftRequests.forEach((v, k) => { data[k] = v; });
+      localStorage.setItem(key, JSON.stringify(data));
+      showToast('一時保存しました');
+    } else if (currentMode === 'admin') {
+      localStorage.setItem(key, JSON.stringify(adminStaffData));
+      showToast('一時保存しました');
+    }
+  }
+  function loadTempSave() {
+    const key = getTempSaveKey();
+    if (!key) return false;
+    const saved = localStorage.getItem(key);
+    if (!saved) return false;
+    try {
+      if (currentMode === 'submit') {
+        const data = JSON.parse(saved);
+        shiftRequests.clear();
+        Object.keys(data).forEach(k => shiftRequests.set(k, data[k]));
+        hasUnsavedChanges = true;
+        updateSubmitButtonState();
+        renderCalendar();
+        renderRequestList();
+        showToast('一時保存データを復元しました');
+        return true;
+      } else if (currentMode === 'admin') {
+        adminStaffData = JSON.parse(saved);
+        renderCalendar();
+        renderUnsubmittedStaffList();
+        showToast('一時保存データを復元しました');
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  }
+  function clearTempSave() {
+    const key = getTempSaveKey();
+    if (key) localStorage.removeItem(key);
+  }
+  function checkAndRestoreTempSave() {
+    const key = getTempSaveKey();
+    if (!key) return;
+    const saved = localStorage.getItem(key);
+    if (saved) loadTempSave();
   }
   // =========================================
   // 画面遷移・モード切替
@@ -1519,6 +1631,7 @@
     const fabBtn          = document.getElementById('fab-btn');
     const btnSaveGas      = document.getElementById('btn-save-gas');
     const btnSaveAdmin    = document.getElementById('btn-save-admin');
+    const btnTempSave     = document.getElementById('btn-temp-save');
     const pageTitle       = document.getElementById('page-title');
     const periodToggle    = document.getElementById('period-toggle-area');
     const inputSection    = document.getElementById('input-section');
@@ -1527,8 +1640,10 @@
     const myshiftTabs     = document.getElementById('myshift-tabs');
     const adminDailyPanel = document.getElementById('admin-daily-panel');
     const listSection     = document.getElementById('list-section');
+    const adminUnsubInline = document.getElementById('admin-unsubmitted-inline');
     // リセット
     adminDailyPanel.style.display = 'none';
+    adminUnsubInline.style.display = 'none';
     selectedAdminDate = null;
     if (mode === 'submit') {
       document.getElementById('nav-submit').classList.add('active');
@@ -1549,6 +1664,7 @@
       fabBtn.style.display         = '';
       btnSaveGas.style.display     = 'flex';
       btnSaveAdmin.style.display   = 'none';
+      btnTempSave.style.display    = 'flex';
       // 次月のシフト希望提出をデフォルトに
       const next = new Date();
       next.setMonth(next.getMonth() + 1);
@@ -1575,6 +1691,7 @@
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'none';
+      btnTempSave.style.display    = 'none';
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
       activeMyShiftTab = 'confirmed';
@@ -1595,6 +1712,7 @@
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'none';
+      btnTempSave.style.display    = 'none';
       currentYear  = new Date().getFullYear();
       currentMonth = new Date().getMonth() + 1;
       renderCalendar();
@@ -1617,6 +1735,8 @@
       fabBtn.style.display         = 'none';
       btnSaveGas.style.display     = 'none';
       btnSaveAdmin.style.display   = 'flex';
+      btnTempSave.style.display    = 'flex';
+      adminUnsubInline.style.display = 'block';
       // 翌月編集をデフォルトに
       const next = new Date();
       next.setMonth(next.getMonth() + 1);

@@ -224,6 +224,10 @@
             <h1 id="page-title">シフト希望提出</h1>
           </div>
           <!-- アクションボタン -->
+          <button class="btn-temp-save" id="btn-temp-save" onclick="tempSave()" style="display:none;">
+            <span class="material-symbols-outlined">save</span>
+            一時保存
+          </button>
           <button class="btn-save" id="btn-save-gas" onclick="openSubmitConfirmModal()" style="display:none;">
             <span class="material-symbols-outlined">send</span>
             希望を提出する
@@ -302,6 +306,15 @@
             <!-- JSで従業員リストを描画 -->
           </div>
         </div>
+        <!-- 管理者: 未提出者一覧（モバイル用インライン表示） -->
+        <div id="admin-unsubmitted-inline" class="admin-daily-detail-panel" style="display:none;">
+          <h3 style="margin:0 0 0.75rem; font-weight:800; font-size:1rem;">
+            <span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle; margin-right:0.25rem;">warning</span>シフト未提出者
+          </h3>
+          <div id="unsubmitted-staff-list-inline">
+            <div class="empty-msg" style="font-size:0.85rem;">読み込み中...</div>
+          </div>
+        </div>
       </main>
       <!-- ==========================================
            右サイドパネル ＆ スマホ用ボトムシート (提出・マイシフト共通)
@@ -315,6 +328,19 @@
           <h3 style="margin-top:0; font-weight:800; margin-bottom:0.5rem; font-size:1rem;">選択した日付に一括入力</h3>
           <div class="selected-count-display">
             選択中: <span id="selected-count">0</span> 日
+          </div>
+          <!-- 曜日一括選択ボタン -->
+          <div class="weekday-select-area">
+            <label style="font-size:0.78rem; font-weight:800; color:var(--c-text-muted); display:block; margin-bottom:0.4rem;">曜日で一括選択</label>
+            <div class="weekday-btns">
+              <button type="button" class="weekday-btn sun" onclick="toggleWeekdaySelection(0)">日</button>
+              <button type="button" class="weekday-btn" onclick="toggleWeekdaySelection(1)">月</button>
+              <button type="button" class="weekday-btn" onclick="toggleWeekdaySelection(2)">火</button>
+              <button type="button" class="weekday-btn" onclick="toggleWeekdaySelection(3)">水</button>
+              <button type="button" class="weekday-btn" onclick="toggleWeekdaySelection(4)">木</button>
+              <button type="button" class="weekday-btn" onclick="toggleWeekdaySelection(5)">金</button>
+              <button type="button" class="weekday-btn sat" onclick="toggleWeekdaySelection(6)">土</button>
+            </div>
           </div>
           
           <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; cursor:pointer; width:fit-content;">
