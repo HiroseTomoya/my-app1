@@ -157,20 +157,19 @@ function submitShiftRequests(payload) {
   const data = sheet.getDataRange().getValues();
   const staffId = String(payload.staffId);
   const targetMonth = payload.targetMonth; // YYYY-MM
-  
-  // 提出期限チェックを追加
-  const deadlineCheck = checkDeadlineStatus(targetMonth);
-  if (deadlineCheck.isLocked) {
-    return { success: false, message: '提出期限を過ぎているため、登録・変更できません。' };
-  }
-  
-  // 重複を防ぐため、同スタッフ・同月の既存データを削除
+
+  // 重複を防ぐため、同スタッフ・同月の既存データを一括削除
+  const rowsToDelete = [];
   for (let i = data.length - 1; i > 0; i--) {
     const sId = String(data[i][0]);
     const dStr = _formatDateStr(data[i][1]);
     if (sId === staffId && dStr.startsWith(targetMonth)) {
-      sheet.deleteRow(i + 1);
+      rowsToDelete.push(i + 1);
     }
+  }
+  if (rowsToDelete.length > 0) {
+    rowsToDelete.sort((a, b) => b - a);
+    rowsToDelete.forEach(r => sheet.deleteRow(r));
   }
   SpreadsheetApp.flush();
 
@@ -351,90 +350,6 @@ function getHolidays(year, month) {
     console.warn('Google Calendar祝日取得エラー: ' + e.message);
   }
   return holidays;
-}
-
-/**
- * 提出締切日(deadline_day)を取得
- */
-function getDeadlineDay() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('System_Settings');
-  if (!sheet) {
-    sheet = ss.insertSheet('System_Settings');
-    sheet.appendRow(['Key', 'Value']);
-    sheet.appendRow(['deadline_day', '20']);
-  }
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === 'deadline_day') {
-      return Number(data[i][1] || 20);
-    }
-  }
-  return 20; // デフォルト20日
-}
-
-/**
- * 提出締切日を保存
- */
-function saveDeadlineDay(day) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('System_Settings');
-  if (!sheet) {
-    sheet = ss.insertSheet('System_Settings');
-    sheet.appendRow(['Key', 'Value']);
-  }
-  
-  const data = sheet.getDataRange().getValues();
-  let foundIndex = -1;
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === 'deadline_day') {
-      foundIndex = i + 1;
-      break;
-    }
-  }
-  
-  if (foundIndex !== -1) {
-    sheet.getRange(foundIndex, 2).setValue(day);
-  } else {
-    sheet.appendRow(['deadline_day', day]);
-  }
-  return { success: true };
-}
-
-/**
- * 対象月のシフト希望提出が締め切られているかどうかを判定する
- * targetMonth: 'YYYY-MM' (シフト対象月)
- * 現在の日付が「対象月の前月の deadline_day」を過ぎているかを判定
- */
-function checkDeadlineStatus(targetMonth) {
-  const deadlineDay = getDeadlineDay();
-  const now = new Date();
-  
-  // テスト用または実行用：現在年・月
-  const currentY = now.getFullYear();
-  const currentM = now.getMonth() + 1;
-  const currentD = now.getDate();
-  
-  const [targetY, targetM] = targetMonth.split('-').map(Number);
-  
-  // シフト対象月の前月
-  let limitY = targetY;
-  let limitM = targetM - 1;
-  if (limitM === 0) {
-    limitM = 12;
-    limitY -= 1;
-  }
-  
-  // 期限日時（前月の deadlineDay の 23:59:59）
-  const deadlineDate = new Date(limitY, limitM - 1, deadlineDay, 23, 59, 59);
-  
-  const isLocked = now > deadlineDate;
-  
-  return {
-    isLocked: isLocked,
-    deadlineDay: deadlineDay,
-    deadlineDateStr: `${limitY}年${limitM}月${deadlineDay}日 23:59`
-  };
 }
 
 /**
@@ -629,7 +544,7 @@ function setupSpreadsheet() {
   if (!sysSheet) sysSheet = ss.insertSheet('System_Settings');
   sysSheet.clear();
   sysSheet.appendRow(['Key', 'Value']);
-  sysSheet.appendRow(['deadline_day', '20']);
+  // System_Settings は将来の設定用に空のまま残す
   
   // 古いシートを削除
   const oldSheets = ['従業員マスター', '希望収集', 'シフト表'];
