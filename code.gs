@@ -158,13 +158,18 @@ function submitShiftRequests(payload) {
   const staffId = String(payload.staffId);
   const targetMonth = payload.targetMonth; // YYYY-MM
 
-  // 重複を防ぐため、同スタッフ・同月の既存データを削除
+  // 重複を防ぐため、同スタッフ・同月の既存データを一括削除
+  const rowsToDelete = [];
   for (let i = data.length - 1; i > 0; i--) {
     const sId = String(data[i][0]);
     const dStr = _formatDateStr(data[i][1]);
     if (sId === staffId && dStr.startsWith(targetMonth)) {
-      sheet.deleteRow(i + 1);
+      rowsToDelete.push(i + 1);
     }
+  }
+  if (rowsToDelete.length > 0) {
+    rowsToDelete.sort((a, b) => b - a);
+    rowsToDelete.forEach(r => sheet.deleteRow(r));
   }
   SpreadsheetApp.flush();
 
@@ -539,7 +544,7 @@ function setupSpreadsheet() {
   if (!sysSheet) sysSheet = ss.insertSheet('System_Settings');
   sysSheet.clear();
   sysSheet.appendRow(['Key', 'Value']);
-  sysSheet.appendRow(['deadline_day', '20']);
+  // System_Settings は将来の設定用に空のまま残す
   
   // 古いシートを削除
   const oldSheets = ['従業員マスター', '希望収集', 'シフト表'];

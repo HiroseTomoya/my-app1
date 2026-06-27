@@ -40,6 +40,12 @@
       if (e.key === 'Enter') document.getElementById('login-password').focus();
     });
     checkAutoLogin();
+    window.addEventListener('beforeunload', e => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
   });
   // =========================================
   // 初期化
@@ -199,6 +205,9 @@
     localStorage.setItem('shift_app_staff_default_position', pos);
   }
   function logout() {
+    if (hasUnsavedChanges && !confirm('未保存の変更があります。ログアウトしますか？')) return;
+    if (!hasUnsavedChanges && !confirm('ログアウトしますか？')) return;
+    hasUnsavedChanges = false;
     localStorage.removeItem('shift_app_staff_id');
     localStorage.removeItem('shift_app_staff_name');
     localStorage.removeItem('shift_app_staff_role');
@@ -366,6 +375,7 @@
         _holidayCache[key] = new Map(holidays);
         if (callback) callback();
       })
+      .withFailureHandler(() => { if (callback) callback(); })
       .getHolidays(currentYear, currentMonth);
   }
   // =========================================
@@ -1192,6 +1202,10 @@
       .withSuccessHandler(workers => {
         loading.style.display = 'none';
         renderCoworkers(workers);
+      })
+      .withFailureHandler(() => {
+        loading.style.display = 'none';
+        document.getElementById('coworkers-list').innerHTML = '<p style="text-align:center; padding:2rem; color:var(--c-text-muted);">読み込みに失敗しました。</p>';
       })
       .getDailyConfirmedShifts(dateStr);
   }
