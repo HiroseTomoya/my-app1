@@ -341,7 +341,8 @@
   // =========================================
   // 祝日の読み込み
   // =========================================
-  let _holidayCache = {}; // { 'YYYY-MM': Map }
+  let _holidayCache = {};
+  const _dataCache = { submit: {}, view: {}, allshift: {}, admin: {} };
   function loadHolidays(callback) {
     const key = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     if (_holidayCache[key]) {
@@ -756,10 +757,18 @@
   // =========================================
   function loadSavedShiftRequests(doneCallback) {
     shiftRequests.clear();
-    setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const cached = _dataCache.submit[targetMonth];
+    if (cached) {
+      Object.keys(cached).forEach(d => shiftRequests.set(d, cached[d]));
+      hasUnsavedChanges = false;
+      updateSubmitButtonState();
+      checkAndRestoreTempSave();
+      renderCalendar();
+      renderRequestList();
+    }
+    setLoadingState(!cached);
     if (typeof google === 'undefined') {
-      // デモデータ
       shiftRequests.set(`${targetMonth}-03`, { start:'17:00', end:'22:00', memo:'' });
       shiftRequests.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', memo:'テスト' });
       shiftRequests.set(`${targetMonth}-10`, { start:'18:00', end:'23:00', memo:'' });
@@ -774,6 +783,8 @@
     }
     google.script.run
       .withSuccessHandler(res => {
+        _dataCache.submit[targetMonth] = res;
+        shiftRequests.clear();
         Object.keys(res).forEach(d => shiftRequests.set(d, res[d]));
         hasUnsavedChanges = false;
         updateSubmitButtonState();
@@ -952,6 +963,7 @@
       .withSuccessHandler(res => {
         if (res.success) {
           showToast('シフト希望を提出しました！');
+          Object.keys(_dataCache).forEach(k => _dataCache[k] = {});
           hasUnsavedChanges = false;
           updateSubmitButtonState();
           clearTempSave();
@@ -975,8 +987,15 @@
   function loadConfirmedShifts(doneCallback) {
     confirmedShifts.clear();
     shiftRequests.clear();
-    setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const cached = _dataCache.view[targetMonth];
+    if (cached) {
+      Object.keys(cached.req || {}).forEach(d => shiftRequests.set(d, cached.req[d]));
+      Object.keys(cached.conf || {}).forEach(d => confirmedShifts.set(d, cached.conf[d]));
+      renderCalendar();
+      renderRequestList();
+    }
+    setLoadingState(!cached);
     if (typeof google === 'undefined') {
       confirmedShifts.set(`${targetMonth}-05`, { start:'17:00', end:'22:00', restTime:'19:00-19:30', position:'キッチン' });
       confirmedShifts.set(`${targetMonth}-06`, { start:'17:00', end:'23:00', restTime:'20:00-20:45', position:'キッチン' });
@@ -991,22 +1010,27 @@
       if (doneCallback) doneCallback();
       return;
     }
+    let reqDone = false, confDone = false, reqRes = {}, confRes = {};
+    function tryFinish() {
+      if (!reqDone || !confDone) return;
+      _dataCache.view[targetMonth] = { req: reqRes, conf: confRes };
+      shiftRequests.clear();
+      confirmedShifts.clear();
+      Object.keys(reqRes).forEach(d => shiftRequests.set(d, reqRes[d]));
+      Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
+      renderCalendar();
+      renderRequestList();
+      setLoadingState(false);
+      if (doneCallback) doneCallback();
+    }
     google.script.run
-      .withSuccessHandler(reqRes => {
-        Object.keys(reqRes).forEach(d => shiftRequests.set(d, reqRes[d]));
-        google.script.run
-          .withSuccessHandler(confRes => {
-            Object.keys(confRes).forEach(d => confirmedShifts.set(d, confRes[d]));
-            renderCalendar();
-            renderRequestList();
-            setLoadingState(false);
-            if (doneCallback) doneCallback();
-          })
-          .withFailureHandler(e => { console.error('getConfirmedShifts failed:', e); renderCalendar(); renderRequestList(); setLoadingState(false); if (doneCallback) doneCallback(); })
-          .getConfirmedShifts(currentStaffId, targetMonth);
-      })
-      .withFailureHandler(e => { console.error('getSavedShiftRequests failed:', e); setLoadingState(false); if (doneCallback) doneCallback(); })
+      .withSuccessHandler(r => { reqRes = r; reqDone = true; tryFinish(); })
+      .withFailureHandler(() => { reqDone = true; tryFinish(); })
       .getSavedShiftRequests(currentStaffId, targetMonth);
+    google.script.run
+      .withSuccessHandler(r => { confRes = r; confDone = true; tryFinish(); })
+      .withFailureHandler(() => { confDone = true; tryFinish(); })
+      .getConfirmedShifts(currentStaffId, targetMonth);
   }
   function buildDetailCardHtml(shift, isConfirmed) {
     let workMinText = '';
@@ -1149,8 +1173,13 @@
   // =========================================
   function loadMonthlyAllShifts(doneCallback) {
     monthlyAllShifts.clear();
-    setLoadingState(true);
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const cached = _dataCache.allshift[targetMonth];
+    if (cached) {
+      Object.keys(cached).forEach(d => monthlyAllShifts.set(d, cached[d]));
+      renderCalendar();
+    }
+    setLoadingState(!cached);
     if (typeof google === 'undefined') {
       monthlyAllShifts.set(`${targetMonth}-01`, [
         { name:'山田 太郎', position:'キッチン', start:'17:00', end:'22:00' },
@@ -1177,6 +1206,8 @@
     }
     google.script.run
       .withSuccessHandler(res => {
+        _dataCache.allshift[targetMonth] = res;
+        monthlyAllShifts.clear();
         Object.keys(res).forEach(d => monthlyAllShifts.set(d, res[d]));
         renderCalendar();
         setLoadingState(false);
@@ -1490,6 +1521,7 @@
       .withSuccessHandler(res => {
         if (res.success) {
           showToast('確定シフトを保存し、従業員側に反映しました！');
+          Object.keys(_dataCache).forEach(k => _dataCache[k] = {});
           clearTempSave();
         } else {
           showToast('保存エラー: ' + res.message, 'error');
