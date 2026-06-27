@@ -329,7 +329,11 @@
         
         <!-- [従業員:希望提出用] 一括入力フォーム -->
         <div class="panel-section input-section" id="input-section">
-          <h3 style="margin-top:0; font-weight:800; margin-bottom:0.5rem; font-size:1rem;">選択した日付に一括入力</h3>
+          <h3 class="input-section-header" style="margin-top:0; font-weight:800; margin-bottom:0.5rem; font-size:1rem;" onclick="toggleInputSection()">
+            選択した日付に一括入力
+            <span class="material-symbols-outlined input-toggle-icon" style="font-size:1.1rem; vertical-align:middle; margin-left:0.3rem; transition:transform 0.3s;">expand_less</span>
+          </h3>
+          <div class="input-section-body">
           <div class="selected-count-display">
             選択中: <span id="selected-count">0</span> 日
           </div>
@@ -377,6 +381,7 @@
             <span class="material-symbols-outlined">save</span>
             一時保存
           </button>
+          </div><!-- /.input-section-body -->
         </div>
         <!-- [従業員:マイシフト確定用] 確定シフトの詳細情報表示 -->
         <div class="panel-section" id="confirmed-detail-section" style="display:none;">

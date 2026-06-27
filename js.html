@@ -785,6 +785,15 @@
       .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
       .getSavedShiftRequests(currentStaffId, targetMonth);
   }
+  function toggleInputSection() {
+    const section = document.getElementById('input-section');
+    const icon = section.querySelector('.input-toggle-icon');
+    const body = section.querySelector('.input-section-body');
+    if (!body) return;
+    const collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    icon.textContent = collapsed ? 'expand_less' : 'expand_more';
+  }
   function toggleInputTime() {
     const isFree = document.getElementById('input-free').checked;
     const timeRow = document.getElementById('input-time-row');
