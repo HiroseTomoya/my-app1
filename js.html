@@ -236,6 +236,36 @@
       document.getElementById('nav-section-admin').style.display = 'none';
       switchMode('view');
     }
+    prefetchAllData();
+  }
+  function prefetchAllData() {
+    if (typeof google === 'undefined') return;
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+    const months = [thisMonth, nextMonth];
+    months.forEach(m => {
+      if (!_dataCache.submit[m]) {
+        google.script.run.withSuccessHandler(r => { _dataCache.submit[m] = r; }).getSavedShiftRequests(currentStaffId, m);
+      }
+      if (!_dataCache.view[m]) {
+        google.script.run.withSuccessHandler(r => {
+          if (!_dataCache.view[m]) _dataCache.view[m] = { req: {}, conf: {} };
+          _dataCache.view[m].req = r;
+        }).getSavedShiftRequests(currentStaffId, m);
+        google.script.run.withSuccessHandler(r => {
+          if (!_dataCache.view[m]) _dataCache.view[m] = { req: {}, conf: {} };
+          _dataCache.view[m].conf = r;
+        }).getConfirmedShifts(currentStaffId, m);
+      }
+      if (!_dataCache.allshift[m]) {
+        google.script.run.withSuccessHandler(r => { _dataCache.allshift[m] = r; }).getMonthlyConfirmedShifts(m);
+      }
+      if (currentStaffRole === '管理者' && !_dataCache.admin[m]) {
+        google.script.run.withSuccessHandler(r => { _dataCache.admin[m] = r; }).getAdminDesiredShifts(m);
+      }
+    });
   }
   // =========================================
   // カレンダー制御
@@ -1286,7 +1316,18 @@
   // =========================================
   function loadAdminDesiredShifts(doneCallback) {
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
-    setLoadingState(true);
+    const cached = _dataCache.admin[targetMonth];
+    if (cached) {
+      adminStaffData = cached;
+      checkAndRestoreTempSave();
+      renderCalendar();
+      renderUnsubmittedStaffList();
+      if (selectedAdminDate) {
+        const day = Number(selectedAdminDate.split('-')[2]);
+        showAdminDailyPanel(day, selectedAdminDate);
+      }
+    }
+    setLoadingState(!cached);
     if (typeof google === 'undefined') {
       adminStaffData = [
         {
@@ -1325,6 +1366,7 @@
     }
     google.script.run
       .withSuccessHandler(data => {
+        _dataCache.admin[targetMonth] = data;
         adminStaffData = data;
         checkAndRestoreTempSave();
         renderCalendar();
