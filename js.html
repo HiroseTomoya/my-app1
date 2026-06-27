@@ -145,6 +145,13 @@
       currentStaffDefaultPosition = savedPos || 'ホール';
       finishLogin();
     }
+    const rememberedId = localStorage.getItem('shift_app_remember_id');
+    const rememberedPwd = localStorage.getItem('shift_app_remember_pwd');
+    if (rememberedId) {
+      document.getElementById('login-staff-id').value = rememberedId;
+      document.getElementById('login-password').value = rememberedPwd || '';
+      document.getElementById('login-remember').checked = true;
+    }
   }
   async function handleLogin() {
     const staffId = document.getElementById('login-staff-id').value.trim();
@@ -203,6 +210,14 @@
     localStorage.setItem('shift_app_staff_name', name);
     localStorage.setItem('shift_app_staff_role', role);
     localStorage.setItem('shift_app_staff_default_position', pos);
+    const remember = document.getElementById('login-remember');
+    if (remember && remember.checked) {
+      localStorage.setItem('shift_app_remember_id', document.getElementById('login-staff-id').value.trim());
+      localStorage.setItem('shift_app_remember_pwd', document.getElementById('login-password').value);
+    } else {
+      localStorage.removeItem('shift_app_remember_id');
+      localStorage.removeItem('shift_app_remember_pwd');
+    }
   }
   function logout() {
     if (hasUnsavedChanges && !confirm('未保存の変更があります。ログアウトしますか？')) return;
