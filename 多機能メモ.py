@@ -352,7 +352,8 @@ class MultiApp(QMainWindow):
         outer_layout.setAlignment(Qt.AlignCenter)
 
         container = QWidget()
-        container.setMaximumWidth(650)
+        container.setMaximumWidth(800)
+        container.setMinimumWidth(500)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(0)
@@ -385,18 +386,19 @@ class MultiApp(QMainWindow):
         for idx, (icon, label, desc, slot, color) in enumerate(opts):
             btn = QPushButton(f"{icon}\n{label}")
             btn.setCursor(QCursor(Qt.PointingHandCursor))
-            btn.setMinimumHeight(140)
+            btn.setMinimumHeight(160)
+            btn.setMinimumWidth(180)
             btn.setToolTip(desc)
             hover = StyledButton.lighten(None, color)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {color};
                     color: white;
-                    font-size: 18px;
-                    font-weight: 600;
+                    font-size: 22px;
+                    font-weight: 700;
                     border: none;
-                    border-radius: 18px;
-                    padding: 20px;
+                    border-radius: 20px;
+                    padding: 24px;
                 }}
                 QPushButton:hover {{
                     background-color: {hover};
@@ -413,17 +415,17 @@ class MultiApp(QMainWindow):
 
         vault_btn = QPushButton("🔒  セキュリティメモ")
         vault_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        vault_btn.setFixedHeight(64)
+        vault_btn.setFixedHeight(72)
         hover = StyledButton.lighten(None, self.colors["danger"])
         vault_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.colors['danger']};
                 color: white;
-                font-size: 16px;
-                font-weight: 600;
+                font-size: 20px;
+                font-weight: 700;
                 border: none;
-                border-radius: 14px;
-                padding: 16px 24px;
+                border-radius: 16px;
+                padding: 18px 28px;
             }}
             QPushButton:hover {{
                 background-color: {hover};
@@ -1219,9 +1221,9 @@ class MultiApp(QMainWindow):
         day_colors = [self.colors["text_sub"]] * 5 + ["#2563EB", "#DC2626"]
         for i, d in enumerate(days):
             lbl = QLabel(d)
-            lbl.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {day_colors[i]};")
+            lbl.setFixedSize(64, 36)
+            lbl.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {day_colors[i]};")
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setFixedHeight(32)
             self.calendar_grid_layout.addWidget(lbl, 0, i)
 
         cal = calendar.monthcalendar(self.cur_year, self.cur_month)
