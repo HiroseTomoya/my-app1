@@ -164,7 +164,7 @@ class MultiApp(QMainWindow):
             "bg_base": "#FFFFFF",      
             "card_bg": "#F5F5F5",      
             "primary": "#0047AB",      
-            "accent": "#00A86B",      
+            "accent": "#7F068A",      
             "success": "#2E8B57",      
             "danger": "#DC143C",       
             "neutral": "#757575",      
