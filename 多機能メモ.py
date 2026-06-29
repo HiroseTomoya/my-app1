@@ -59,8 +59,8 @@ class StyledButton(QPushButton):
             self.setFixedWidth(width)
 
         hover_color = self.lighten(base_color)
-        pad = "10px 16px" if compact else "14px 24px"
-        font_size = "13px" if compact else "15px"
+        pad = "10px 20px" if compact else "14px 28px"
+        font_size = "14px" if compact else "16px"
         radius = "10px"
         self.setStyleSheet(f"""
             QPushButton {{
@@ -153,8 +153,9 @@ class StyledInputDialog(QDialog):
 class MultiApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Multifunctional Memo")
-        self.resize(700, 850)
+        self.setWindowTitle("Multi Memo")
+        self.resize(900, 750)
+        self.setMinimumSize(600, 500)
         
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         self.DATA_FILE = os.path.join(BASE_DIR, "memo_pro_data.json")
@@ -191,6 +192,7 @@ class MultiApp(QMainWindow):
         self.setStyleSheet(f"""
             * {{
                 font-family: 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+                font-size: 15px;
             }}
             QMainWindow {{
                 background-color: {self.colors['bg_base']};
@@ -202,11 +204,11 @@ class MultiApp(QMainWindow):
             QTextEdit {{
                 background-color: #FFFFFF;
                 color: {self.colors['text_main']};
-                font-size: 15px;
-                line-height: 1.6;
+                font-size: 16px;
+                line-height: 1.7;
                 border: 2px solid #E5E7EB;
                 border-radius: 12px;
-                padding: 14px;
+                padding: 16px;
                 selection-background-color: #BFDBFE;
             }}
             QTextEdit:focus {{
@@ -219,31 +221,41 @@ class MultiApp(QMainWindow):
                 border: 2px solid #E5E7EB;
                 border-radius: 10px;
                 padding: 10px 14px;
-                min-height: 20px;
+                min-height: 24px;
             }}
             QLineEdit:focus {{
                 border: 2px solid {self.colors['primary']};
             }}
             QLabel {{
                 color: {self.colors['text_main']};
-                font-size: 14px;
+                font-size: 15px;
             }}
             QComboBox {{
-                font-size: 14px;
-                padding: 8px 12px;
+                font-size: 15px;
+                padding: 10px 14px;
                 border: 2px solid #E5E7EB;
                 border-radius: 10px;
                 background: white;
+                min-height: 24px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                padding-right: 10px;
             }}
             QMessageBox {{
-                font-size: 14px;
+                font-size: 15px;
+            }}
+            QMessageBox QLabel {{
+                font-size: 15px;
+                min-width: 300px;
             }}
             QMessageBox QPushButton {{
-                min-width: 80px;
-                min-height: 36px;
-                padding: 8px 20px;
+                min-width: 100px;
+                min-height: 40px;
+                padding: 10px 24px;
                 border-radius: 8px;
                 font-weight: 600;
+                font-size: 14px;
             }}
         """)
 
@@ -336,15 +348,20 @@ class MultiApp(QMainWindow):
         screen = QWidget()
         screen.setStyleSheet(f"background-color: {self.colors['bg_base']};")
 
-        layout = QVBoxLayout(screen)
-        layout.setContentsMargins(20, 32, 20, 32)
+        outer_layout = QVBoxLayout(screen)
+        outer_layout.setAlignment(Qt.AlignCenter)
+
+        container = QWidget()
+        container.setMaximumWidth(650)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(0)
 
         title = QLabel("Multi Memo")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(f"""
             color: {self.colors['primary']};
-            font-size: 28px;
+            font-size: 36px;
             font-weight: 700;
             padding-bottom: 4px;
         """)
@@ -352,33 +369,34 @@ class MultiApp(QMainWindow):
 
         subtitle = QLabel("多機能メモツール")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 13px; padding-bottom: 28px;")
+        subtitle.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 15px; padding-bottom: 32px;")
         layout.addWidget(subtitle)
 
         grid = QGridLayout()
-        grid.setSpacing(14)
+        grid.setSpacing(16)
 
         opts = [
-            ("⏲", "タイマー", lambda: self.change_screen("timer"), self.colors["primary"]),
-            ("📝", "TO DO", lambda: self.change_screen("todo"), self.colors["accent"]),
-            ("📄", "メモ", lambda: self.change_screen("memo"), self.colors["success"]),
-            ("📅", "カレンダー", lambda: self.change_screen("calendar"), self.colors["neutral"]),
+            ("⏲", "タイマー", "時間を管理", lambda: self.change_screen("timer"), self.colors["primary"]),
+            ("📝", "TO DO", "タスク管理", lambda: self.change_screen("todo"), self.colors["accent"]),
+            ("📄", "メモ", "テキスト入力", lambda: self.change_screen("memo"), self.colors["success"]),
+            ("📅", "カレンダー", "予定を記録", lambda: self.change_screen("calendar"), self.colors["neutral"]),
         ]
 
-        for idx, (icon, label, slot, color) in enumerate(opts):
+        for idx, (icon, label, desc, slot, color) in enumerate(opts):
             btn = QPushButton(f"{icon}\n{label}")
             btn.setCursor(QCursor(Qt.PointingHandCursor))
-            btn.setFixedHeight(120)
+            btn.setMinimumHeight(140)
+            btn.setToolTip(desc)
             hover = StyledButton.lighten(None, color)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {color};
                     color: white;
-                    font-size: 15px;
+                    font-size: 18px;
                     font-weight: 600;
                     border: none;
-                    border-radius: 16px;
-                    padding: 16px;
+                    border-radius: 18px;
+                    padding: 20px;
                 }}
                 QPushButton:hover {{
                     background-color: {hover};
@@ -391,21 +409,21 @@ class MultiApp(QMainWindow):
             grid.addWidget(btn, idx // 2, idx % 2)
 
         layout.addLayout(grid)
-        layout.addSpacing(14)
+        layout.addSpacing(16)
 
         vault_btn = QPushButton("🔒  セキュリティメモ")
         vault_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        vault_btn.setFixedHeight(60)
+        vault_btn.setFixedHeight(64)
         hover = StyledButton.lighten(None, self.colors["danger"])
         vault_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.colors['danger']};
                 color: white;
-                font-size: 15px;
+                font-size: 16px;
                 font-weight: 600;
                 border: none;
                 border-radius: 14px;
-                padding: 14px 24px;
+                padding: 16px 24px;
             }}
             QPushButton:hover {{
                 background-color: {hover};
@@ -415,6 +433,7 @@ class MultiApp(QMainWindow):
         layout.addWidget(vault_btn)
 
         layout.addStretch()
+        outer_layout.addWidget(container)
         self.stacked_widget.addWidget(screen)
         self.screens["selector"] = screen
 
@@ -434,7 +453,7 @@ class MultiApp(QMainWindow):
         self.timer_display = QLabel("00:00")
         self.timer_display.setStyleSheet(f"""
             font-family: 'Consolas', 'SF Mono', monospace;
-            font-size: 80px;
+            font-size: 96px;
             font-weight: 700;
             color: {self.colors['text_main']};
         """)
@@ -621,7 +640,7 @@ class MultiApp(QMainWindow):
 
         # テキストエリア（メイン領域、最大限広く）
         self.memo_text_widget = QTextEdit()
-        self.memo_text_widget.setFont(QFont("Meiryo UI", 14))
+        self.memo_text_widget.setFont(QFont("Meiryo UI", 15))
         self.memo_text_widget.setPlaceholderText("ここにメモを入力...")
         self.memo_text_widget.textChanged.connect(self.save_memo_content)
         layout.addWidget(self.memo_text_widget, stretch=1)
@@ -667,16 +686,16 @@ class MultiApp(QMainWindow):
 
             btn = QPushButton(name)
             btn.setCursor(QCursor(Qt.PointingHandCursor))
-            btn.setFixedHeight(36)
+            btn.setFixedHeight(38)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {bg};
                     color: {fg};
                     font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-weight: 600;
-                    border-radius: 18px;
-                    padding: 6px 16px;
+                    border-radius: 19px;
+                    padding: 7px 18px;
                     border: {border};
                 }}
             """)
@@ -946,12 +965,12 @@ class MultiApp(QMainWindow):
             row_layout.setSpacing(10)
 
             lbl_title = QLabel(item['title'])
-            lbl_title.setMinimumWidth(100)
-            lbl_title.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {self.colors['text_main']}; border: none;")
+            lbl_title.setMinimumWidth(120)
+            lbl_title.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {self.colors['text_main']}; border: none;")
 
             p_disp = item["pass"] if item.get("show") else "••••••••"
             lbl_pass = QLabel(p_disp)
-            lbl_pass.setStyleSheet(f"font-family: 'Consolas', monospace; color: {self.colors['text_sub']}; font-size: 13px; border: none;")
+            lbl_pass.setStyleSheet(f"font-family: 'Consolas', monospace; color: {self.colors['text_sub']}; font-size: 14px; border: none;")
 
             row_layout.addWidget(lbl_title)
             row_layout.addWidget(lbl_pass)
@@ -977,12 +996,12 @@ class MultiApp(QMainWindow):
                 QPushButton {{
                     color: {color};
                     font-weight: 600;
-                    font-size: 12px;
+                    font-size: 13px;
                     background: {bg};
                     border: 1px solid {border};
-                    border-radius: 6px;
-                    padding: 4px 10px;
-                    min-height: 28px;
+                    border-radius: 8px;
+                    padding: 6px 12px;
+                    min-height: 32px;
                 }}
                 QPushButton:hover {{
                     background: {hover};
@@ -1066,26 +1085,26 @@ class MultiApp(QMainWindow):
                     border: 1px solid #E5E7EB;
                 }
             """)
-            row.setFixedHeight(52)
+            row.setFixedHeight(56)
             row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(16, 8, 12, 8)
+            row_layout.setContentsMargins(18, 10, 14, 10)
 
             lbl = QLabel(task)
-            lbl.setStyleSheet(f"font-size: 14px; color: {self.colors['text_main']}; border: none;")
+            lbl.setStyleSheet(f"font-size: 15px; color: {self.colors['text_main']}; border: none;")
             row_layout.addWidget(lbl)
             row_layout.addStretch()
 
             done_btn = QPushButton("✓ 完了")
-            done_btn.setFixedHeight(32)
+            done_btn.setFixedHeight(36)
             done_btn.setStyleSheet(f"""
                 QPushButton {{
                     color: {self.colors['success']};
                     font-weight: 600;
-                    font-size: 13px;
+                    font-size: 14px;
                     background: #ECFDF5;
                     border: 1px solid #A7F3D0;
                     border-radius: 8px;
-                    padding: 4px 12px;
+                    padding: 6px 16px;
                 }}
                 QPushButton:hover {{
                     background: #D1FAE5;
@@ -1223,13 +1242,13 @@ class MultiApp(QMainWindow):
                     bg, fg, border = "white", self.colors["text_main"], "1px solid #E5E7EB"
 
                 btn = QPushButton(str(day))
-                btn.setFixedSize(56, 44)
+                btn.setFixedSize(64, 48)
                 btn.setCursor(QCursor(Qt.PointingHandCursor))
                 btn.setStyleSheet(f"""
                     QPushButton {{
                         background-color: {bg};
                         color: {fg};
-                        font-size: 13px;
+                        font-size: 14px;
                         font-weight: 600;
                         border: {border};
                         border-radius: 10px;
