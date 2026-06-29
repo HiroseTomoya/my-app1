@@ -208,8 +208,6 @@ class MultiApp(QMainWindow):
             self.master_hash = None
             self.birth_hash = None
             self.vault_items = []
-        else:
-            self.master_hash, self.birth_hash, self.vault_items = None, None, []
 
         self.current_memo_folder = list(self.memo_data.keys())[0]
         self.is_authenticated = False
