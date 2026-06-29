@@ -1,6 +1,7 @@
 import sys
 import json
 import os
+import shutil
 import time #時間関連の機能をモジュール
 import hashlib
 from datetime import datetime
@@ -176,30 +177,37 @@ class MultiApp(QMainWindow):
         }
         self.setStyleSheet(f"background-color: {self.colors['bg_base']};")
 
+    def _load_json_with_backup(self, filepath):
+        for path in [filepath, filepath + ".bak"]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if path.endswith(".bak"):
+                        shutil.copy2(path, filepath)
+                    return data
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        return None
+
     def load_all_data(self):
-        if os.path.exists(self.DATA_FILE):
-            try:
-                with open(self.DATA_FILE, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                    self.todo_items = d.get("todo", [])
-                    self.memo_data = d.get("memo", {"メイン": ""})
-                    self.calendar_notes = d.get("calendar", {})
-            except (json.JSONDecodeError, ValueError):
-                self.todo_items, self.memo_data, self.calendar_notes = [], {"メイン": ""}, {}
+        d = self._load_json_with_backup(self.DATA_FILE)
+        if d:
+            self.todo_items = d.get("todo", [])
+            self.memo_data = d.get("memo", {"メイン": ""})
+            self.calendar_notes = d.get("calendar", {})
         else:
             self.todo_items, self.memo_data, self.calendar_notes = [], {"メイン": ""}, {}
 
-        if os.path.exists(self.VAULT_FILE):
-            try:
-                with open(self.VAULT_FILE, "r", encoding="utf-8") as f:
-                    v = json.load(f)
-                    self.master_hash = v.get("hash")
-                    self.birth_hash = v.get("birth_hash")
-                    self.vault_items = v.get("items", [])
-            except (json.JSONDecodeError, ValueError):
-                self.master_hash = None
-                self.birth_hash = None
-                self.vault_items = []
+        v = self._load_json_with_backup(self.VAULT_FILE)
+        if v:
+            self.master_hash = v.get("hash")
+            self.birth_hash = v.get("birth_hash")
+            self.vault_items = v.get("items", [])
+        else:
+            self.master_hash = None
+            self.birth_hash = None
+            self.vault_items = []
         else:
             self.master_hash, self.birth_hash, self.vault_items = None, None, []
 
@@ -208,13 +216,19 @@ class MultiApp(QMainWindow):
         self.cur_year, self.cur_month = datetime.now().year, datetime.now().month
         self.sounds = {"📢 警告音": "SystemHand", "🎵 標準音": "SystemAsterisk"}
 
+    def _save_json_safe(self, filepath, data):
+        tmp_path = filepath + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        if os.path.exists(filepath):
+            shutil.copy2(filepath, filepath + ".bak")
+        os.replace(tmp_path, filepath)
+
     def save_all_data(self):
         data = {"todo": self.todo_items, "memo": self.memo_data, "calendar": self.calendar_notes}
-        with open(self.DATA_FILE, "w", encoding="utf-8") as f: 
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        self._save_json_safe(self.DATA_FILE, data)
         vault = {"hash": self.master_hash, "birth_hash": self.birth_hash, "items": self.vault_items}
-        with open(self.VAULT_FILE, "w", encoding="utf-8") as f: 
-            json.dump(vault, f, ensure_ascii=False, indent=4)
+        self._save_json_safe(self.VAULT_FILE, vault)
 
     def change_screen(self, screen_key):
         self.save_all_data()
