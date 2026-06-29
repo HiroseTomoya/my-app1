@@ -162,20 +162,50 @@ class MultiApp(QMainWindow):
 
     def init_style(self):
         self.colors = {
-            "bg_base": "#FFFFFF",      
-            "card_bg": "#F5F5F5",      
-            "primary": "#0047AB",      
-            "accent": "#7F068A",      
-            "success": "#2E8B57",      
-            "danger": "#DC143C",       
-            "neutral": "#757575",      
-            "text_main": "#212121",    
-            "text_sub": "#616161",     
-            "tab_active": "#0047AB",   
-            "tab_inactive": "#E0E0E0",
-            "btn_back": "#555555"     
+            "bg_base": "#F8F9FA",
+            "card_bg": "#FFFFFF",
+            "primary": "#1A73E8",
+            "accent": "#8E24AA",
+            "success": "#34A853",
+            "danger": "#EA4335",
+            "neutral": "#5F6368",
+            "text_main": "#202124",
+            "text_sub": "#5F6368",
+            "tab_active": "#1A73E8",
+            "tab_inactive": "#E8EAED",
+            "btn_back": "#5F6368"
         }
-        self.setStyleSheet(f"background-color: {self.colors['bg_base']};")
+        self.setStyleSheet(f"""
+            * {{
+                font-family: 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', sans-serif;
+                font-size: 14px;
+            }}
+            QMainWindow {{
+                background-color: {self.colors['bg_base']};
+            }}
+            QPushButton {{
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                opacity: 0.85;
+            }}
+            QTextEdit, QLineEdit {{
+                border: 1px solid #DADCE0;
+                border-radius: 8px;
+                padding: 8px;
+                background-color: #FFFFFF;
+                font-size: 14px;
+            }}
+            QTextEdit:focus, QLineEdit:focus {{
+                border: 2px solid {self.colors['primary']};
+            }}
+            QLabel {{
+                color: {self.colors['text_main']};
+            }}
+        """)
 
     def _load_json_with_backup(self, filepath):
         for path in [filepath, filepath + ".bak"]:
