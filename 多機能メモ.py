@@ -559,7 +559,7 @@ class MultiApp(QMainWindow):
         in_layout.addSpacing(16)
         in_layout.addWidget(self.e_sec)
         in_layout.addWidget(sec_lbl)
-        layout.addWidget(in_f)
+        layout.addWidget(in_f, alignment=Qt.AlignCenter)
 
         layout.addSpacing(12)
 
@@ -576,7 +576,7 @@ class MultiApp(QMainWindow):
         preview_btn.clicked.connect(self.preview_sound)
         sound_layout.addWidget(self.sound_combo)
         sound_layout.addWidget(preview_btn)
-        layout.addWidget(sound_f)
+        layout.addWidget(sound_f, alignment=Qt.AlignCenter)
 
         layout.addStretch(3)
 
@@ -1282,7 +1282,7 @@ class MultiApp(QMainWindow):
         for i, d in enumerate(days):
             lbl = QLabel(d)
             lbl.setFixedSize(64, 36)
-            lbl.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {day_colors[i]};")
+            lbl.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {day_colors[i]}; background: transparent; border: none;")
             lbl.setAlignment(Qt.AlignCenter)
             self.calendar_grid_layout.addWidget(lbl, 0, i)
 
