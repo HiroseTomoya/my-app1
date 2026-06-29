@@ -337,67 +337,82 @@ class MultiApp(QMainWindow):
         screen.setStyleSheet(f"background-color: {self.colors['bg_base']};")
 
         layout = QVBoxLayout(screen)
-        layout.setAlignment(Qt.AlignCenter)
-        layout.setContentsMargins(24, 40, 24, 40)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 32, 20, 32)
+        layout.setSpacing(0)
 
         title = QLabel("Multi Memo")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet(f"""
             color: {self.colors['primary']};
-            font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
-            margin-bottom: 8px;
+            padding-bottom: 4px;
         """)
         layout.addWidget(title)
 
         subtitle = QLabel("多機能メモツール")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet(f"""
-            color: {self.colors['text_sub']};
-            font-size: 14px;
-            margin-bottom: 24px;
-        """)
+        subtitle.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 13px; padding-bottom: 28px;")
         layout.addWidget(subtitle)
 
+        grid = QGridLayout()
+        grid.setSpacing(14)
+
         opts = [
-            ("⏲  タイマー", "時間管理", lambda: self.change_screen("timer"), self.colors["primary"]),
-            ("📝  TO DO", "タスク管理", lambda: self.change_screen("todo"), self.colors["accent"]),
-            ("📄  メモ", "テキストメモ", lambda: self.change_screen("memo"), self.colors["success"]),
-            ("📅  カレンダー", "予定管理", lambda: self.change_screen("calendar"), self.colors["neutral"]),
-            ("🔒  セキュリティメモ", "暗号化保存", self.handle_vault_navigation, self.colors["danger"])
+            ("⏲", "タイマー", lambda: self.change_screen("timer"), self.colors["primary"]),
+            ("📝", "TO DO", lambda: self.change_screen("todo"), self.colors["accent"]),
+            ("📄", "メモ", lambda: self.change_screen("memo"), self.colors["success"]),
+            ("📅", "カレンダー", lambda: self.change_screen("calendar"), self.colors["neutral"]),
         ]
 
-        for text, desc, slot, color in opts:
-            btn = QPushButton()
+        for idx, (icon, label, slot, color) in enumerate(opts):
+            btn = QPushButton(f"{icon}\n{label}")
             btn.setCursor(QCursor(Qt.PointingHandCursor))
-            btn.setFixedHeight(68)
-            btn.setMaximumWidth(500)
-            btn.setMinimumWidth(280)
+            btn.setFixedHeight(120)
             hover = StyledButton.lighten(None, color)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {color};
                     color: white;
-                    font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
-                    font-size: 16px;
+                    font-size: 15px;
                     font-weight: 600;
                     border: none;
-                    border-radius: 14px;
-                    padding: 12px 24px;
-                    text-align: left;
+                    border-radius: 16px;
+                    padding: 16px;
                 }}
                 QPushButton:hover {{
                     background-color: {hover};
                 }}
                 QPushButton:pressed {{
-                    padding-top: 14px;
+                    background-color: {color};
                 }}
             """)
-            btn.setText(f"{text}    —  {desc}")
             btn.clicked.connect(slot)
-            layout.addWidget(btn, alignment=Qt.AlignCenter)
+            grid.addWidget(btn, idx // 2, idx % 2)
+
+        layout.addLayout(grid)
+        layout.addSpacing(14)
+
+        vault_btn = QPushButton("🔒  セキュリティメモ")
+        vault_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        vault_btn.setFixedHeight(60)
+        hover = StyledButton.lighten(None, self.colors["danger"])
+        vault_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['danger']};
+                color: white;
+                font-size: 15px;
+                font-weight: 600;
+                border: none;
+                border-radius: 14px;
+                padding: 14px 24px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover};
+            }}
+        """)
+        vault_btn.clicked.connect(self.handle_vault_navigation)
+        layout.addWidget(vault_btn)
 
         layout.addStretch()
         self.stacked_widget.addWidget(screen)
@@ -407,25 +422,26 @@ class MultiApp(QMainWindow):
     def create_timer_screen(self):
         screen = QWidget()
         layout = QVBoxLayout(screen)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(0)
 
         back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
         back_btn.clicked.connect(self.back_to_selector)
         layout.addWidget(back_btn, alignment=Qt.AlignLeft)
 
-        layout.addStretch()
+        layout.addStretch(2)
 
         self.timer_display = QLabel("00:00")
         self.timer_display.setStyleSheet(f"""
             font-family: 'Consolas', 'SF Mono', monospace;
-            font-size: 72px;
+            font-size: 80px;
             font-weight: 700;
             color: {self.colors['text_main']};
-            padding: 20px;
         """)
         self.timer_display.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.timer_display)
+
+        layout.addSpacing(24)
 
         in_f = QWidget()
         in_layout = QHBoxLayout(in_f)
@@ -434,74 +450,74 @@ class MultiApp(QMainWindow):
 
         self.e_min = QLineEdit("0")
         self.e_sec = QLineEdit("00")
-
         for entry in (self.e_min, self.e_sec):
-            entry.setFixedWidth(80)
-            entry.setFixedHeight(48)
+            entry.setFixedSize(72, 48)
             entry.setAlignment(Qt.AlignCenter)
             entry.setStyleSheet(f"""
                 font-family: 'Consolas', monospace;
-                font-size: 24px;
+                font-size: 22px;
                 font-weight: 600;
                 border: 2px solid #E5E7EB;
-                border-radius: 10px;
+                border-radius: 12px;
                 background: white;
                 color: {self.colors['text_main']};
             """)
 
         min_lbl = QLabel("分")
         sec_lbl = QLabel("秒")
-        min_lbl.setStyleSheet("font-size: 16px; font-weight: 600;")
-        sec_lbl.setStyleSheet("font-size: 16px; font-weight: 600;")
+        for l in (min_lbl, sec_lbl):
+            l.setStyleSheet("font-size: 15px; font-weight: 600;")
 
         in_layout.addWidget(self.e_min)
         in_layout.addWidget(min_lbl)
-        in_layout.addSpacing(12)
+        in_layout.addSpacing(16)
         in_layout.addWidget(self.e_sec)
         in_layout.addWidget(sec_lbl)
         layout.addWidget(in_f)
+
+        layout.addSpacing(16)
 
         sound_f = QWidget()
         sound_layout = QHBoxLayout(sound_f)
         sound_layout.setAlignment(Qt.AlignCenter)
         sound_layout.setSpacing(10)
-
         self.sound_combo = QComboBox()
         self.sound_combo.addItems(list(self.sounds.keys()))
         self.sound_combo.setFixedWidth(160)
         self.sound_combo.setFixedHeight(40)
-
         preview_btn = StyledButton("♪ 試聴", self.colors["neutral"], compact=True)
         preview_btn.clicked.connect(self.preview_sound)
-
         sound_layout.addWidget(self.sound_combo)
         sound_layout.addWidget(preview_btn)
         layout.addWidget(sound_f)
 
-        layout.addSpacing(12)
+        layout.addStretch(3)
 
-        btn_f = QWidget()
-        btn_layout = QHBoxLayout(btn_f)
-        btn_layout.setAlignment(Qt.AlignCenter)
-        btn_layout.setSpacing(12)
+        # 操作ボタンを下部に固定配置
+        btn_bar = QWidget()
+        btn_bar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 16px;
+                border: 1px solid #E5E7EB;
+            }}
+        """)
+        btn_layout = QHBoxLayout(btn_bar)
+        btn_layout.setContentsMargins(12, 12, 12, 12)
+        btn_layout.setSpacing(10)
 
-        start_btn = StyledButton("スタート", self.colors["primary"])
+        start_btn = StyledButton("▶ スタート", self.colors["primary"])
         start_btn.clicked.connect(self.start_timer)
-        stop_btn = StyledButton("ストップ", self.colors["danger"])
+        stop_btn = StyledButton("■ ストップ", self.colors["danger"])
         stop_btn.clicked.connect(self.stop_timer)
-        reset_btn = StyledButton("リセット", self.colors["neutral"])
+        reset_btn = StyledButton("↺ リセット", self.colors["neutral"])
         reset_btn.clicked.connect(self.reset_timer)
 
         for b in (start_btn, stop_btn, reset_btn):
-            b.setFixedHeight(48)
-            b.setMinimumWidth(100)
+            b.setFixedHeight(52)
+            btn_layout.addWidget(b)
 
-        btn_layout.addWidget(start_btn)
-        btn_layout.addWidget(stop_btn)
-        btn_layout.addWidget(reset_btn)
-        layout.addWidget(btn_f)
-
-        layout.addStretch()
+        layout.addWidget(btn_bar)
         self.stacked_widget.addWidget(screen)
         self.screens["timer"] = screen
 
@@ -554,29 +570,22 @@ class MultiApp(QMainWindow):
     def create_memo_screen(self):
         screen = QWidget()
         layout = QVBoxLayout(screen)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
 
-        top_bar = QWidget()
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(8)
-
+        # ヘッダー: 戻るボタンのみ（シンプル）
         back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
         back_btn.clicked.connect(self.back_to_selector)
-        top_layout.addWidget(back_btn)
-        top_layout.addStretch()
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
 
-        rename_btn = StyledButton("名前変更", self.colors["primary"], compact=True)
-        rename_btn.clicked.connect(self.rename_current_folder)
-        add_btn = StyledButton("+ 新規", self.colors["accent"], compact=True)
-        add_btn.clicked.connect(self.add_folder)
-        top_layout.addWidget(rename_btn)
-        top_layout.addWidget(add_btn)
-        layout.addWidget(top_bar)
+        # タブ行: フォルダタブ + 新規ボタンを同じ行に
+        tab_row = QWidget()
+        tab_row_layout = QHBoxLayout(tab_row)
+        tab_row_layout.setContentsMargins(0, 0, 0, 0)
+        tab_row_layout.setSpacing(6)
 
         tab_scroll = QScrollArea()
-        tab_scroll.setFixedHeight(44)
+        tab_scroll.setFixedHeight(42)
         tab_scroll.setWidgetResizable(True)
         tab_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         tab_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -588,17 +597,58 @@ class MultiApp(QMainWindow):
         self.tab_layout.setSpacing(6)
         self.tab_layout.setAlignment(Qt.AlignLeft)
         tab_scroll.setWidget(self.tab_widget)
-        layout.addWidget(tab_scroll)
+        tab_row_layout.addWidget(tab_scroll)
 
+        add_btn = QPushButton("+")
+        add_btn.setFixedSize(36, 36)
+        add_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['accent']};
+                color: white;
+                font-size: 18px;
+                font-weight: 700;
+                border: none;
+                border-radius: 18px;
+            }}
+            QPushButton:hover {{
+                background-color: {StyledButton.lighten(None, self.colors['accent'])};
+            }}
+        """)
+        add_btn.clicked.connect(self.add_folder)
+        tab_row_layout.addWidget(add_btn)
+        layout.addWidget(tab_row)
+
+        # テキストエリア（メイン領域、最大限広く）
         self.memo_text_widget = QTextEdit()
-        self.memo_text_widget.setFont(QFont("Meiryo UI", 13))
+        self.memo_text_widget.setFont(QFont("Meiryo UI", 14))
         self.memo_text_widget.setPlaceholderText("ここにメモを入力...")
         self.memo_text_widget.textChanged.connect(self.save_memo_content)
-        layout.addWidget(self.memo_text_widget)
+        layout.addWidget(self.memo_text_widget, stretch=1)
 
-        hint_lbl = QLabel("💡 フォルダタブを長押し/右クリックで削除")
-        hint_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 11px; padding: 4px 0;")
-        layout.addWidget(hint_lbl)
+        # 下部ツールバー: フォルダ操作
+        bottom_bar = QWidget()
+        bottom_bar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 12px;
+                border: 1px solid #E5E7EB;
+            }}
+        """)
+        bottom_layout = QHBoxLayout(bottom_bar)
+        bottom_layout.setContentsMargins(12, 8, 12, 8)
+        bottom_layout.setSpacing(8)
+
+        rename_btn = StyledButton("✏ 名前変更", self.colors["primary"], compact=True)
+        rename_btn.clicked.connect(self.rename_current_folder)
+        bottom_layout.addWidget(rename_btn)
+        bottom_layout.addStretch()
+
+        hint_lbl = QLabel("タブ右クリックで削除")
+        hint_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 11px; border: none;")
+        bottom_layout.addWidget(hint_lbl)
+
+        layout.addWidget(bottom_bar)
 
         self.stacked_widget.addWidget(screen)
         self.screens["memo"] = screen
@@ -834,26 +884,19 @@ class MultiApp(QMainWindow):
     def create_vault_inside_screen(self):
         screen = QWidget()
         layout = QVBoxLayout(screen)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         def logout():
             self.is_authenticated = False
             self.back_to_selector()
 
-        top_bar = QWidget()
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(0, 0, 0, 0)
+        # ヘッダー
         back_btn = StyledButton("🔓 ログアウト", self.colors["btn_back"], compact=True)
         back_btn.clicked.connect(logout)
-        top_layout.addWidget(back_btn)
-        top_layout.addStretch()
-        add_btn = StyledButton("+ メモ追加", self.colors["accent"])
-        add_btn.setFixedHeight(42)
-        add_btn.clicked.connect(self.add_vault_item)
-        top_layout.addWidget(add_btn)
-        layout.addWidget(top_bar)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
 
+        # リスト領域
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
 
@@ -861,10 +904,16 @@ class MultiApp(QMainWindow):
         self.vault_list_layout = QVBoxLayout(self.vault_list_widget)
         self.vault_list_layout.setAlignment(Qt.AlignTop)
         self.vault_list_layout.setSpacing(8)
-        self.vault_list_layout.setContentsMargins(4, 4, 4, 4)
+        self.vault_list_layout.setContentsMargins(4, 8, 4, 8)
         scroll.setWidget(self.vault_list_widget)
+        layout.addWidget(scroll, stretch=1)
 
-        layout.addWidget(scroll)
+        # 追加ボタンを下部固定
+        add_btn = StyledButton("＋ セキュリティメモを追加", self.colors["accent"])
+        add_btn.setFixedHeight(52)
+        add_btn.clicked.connect(self.add_vault_item)
+        layout.addWidget(add_btn)
+
         self.stacked_widget.addWidget(screen)
         self.screens["vault_inside"] = screen
 
@@ -967,22 +1016,15 @@ class MultiApp(QMainWindow):
     def create_todo_screen(self):
         screen = QWidget()
         layout = QVBoxLayout(screen)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        top_bar = QWidget()
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(0, 0, 0, 0)
+        # ヘッダー
         back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
         back_btn.clicked.connect(self.back_to_selector)
-        top_layout.addWidget(back_btn)
-        top_layout.addStretch()
-        add_btn = StyledButton("+ タスク追加", self.colors["accent"])
-        add_btn.setFixedHeight(42)
-        add_btn.clicked.connect(self.add_todo_item)
-        top_layout.addWidget(add_btn)
-        layout.addWidget(top_bar)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
 
+        # リスト領域
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
 
@@ -990,10 +1032,16 @@ class MultiApp(QMainWindow):
         self.todo_list_layout = QVBoxLayout(self.todo_list_widget)
         self.todo_list_layout.setAlignment(Qt.AlignTop)
         self.todo_list_layout.setSpacing(8)
-        self.todo_list_layout.setContentsMargins(4, 4, 4, 4)
+        self.todo_list_layout.setContentsMargins(4, 8, 4, 8)
         scroll.setWidget(self.todo_list_widget)
+        layout.addWidget(scroll, stretch=1)
 
-        layout.addWidget(scroll)
+        # 追加ボタンを下部に固定（FABスタイル）
+        add_btn = StyledButton("＋ タスクを追加", self.colors["accent"])
+        add_btn.setFixedHeight(52)
+        add_btn.clicked.connect(self.add_todo_item)
+        layout.addWidget(add_btn)
+
         self.stacked_widget.addWidget(screen)
         self.screens["todo"] = screen
 
@@ -1055,53 +1103,88 @@ class MultiApp(QMainWindow):
     def create_calendar_screen(self):
         screen = QWidget()
         layout = QVBoxLayout(screen)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
         back_btn.clicked.connect(self.back_to_selector)
         layout.addWidget(back_btn, alignment=Qt.AlignLeft)
 
+        # 月ナビゲーション（大きなタッチ領域）
         ctrl_f = QWidget()
+        ctrl_f.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 12px;
+                border: 1px solid #E5E7EB;
+            }}
+        """)
         ctrl_layout = QHBoxLayout(ctrl_f)
-        ctrl_layout.setAlignment(Qt.AlignCenter)
-        ctrl_layout.setSpacing(20)
+        ctrl_layout.setContentsMargins(8, 8, 8, 8)
 
-        prev_btn = StyledButton("◀", self.colors["primary"], compact=True)
-        prev_btn.setFixedSize(44, 44)
+        prev_btn = QPushButton("◀  前月")
+        prev_btn.setFixedHeight(44)
+        prev_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        prev_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.colors['primary']};
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{ background: #EFF6FF; }}
+        """)
         prev_btn.clicked.connect(self.prev_month)
 
         self.cal_label = QLabel()
         self.cal_label.setStyleSheet(f"""
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 700;
             color: {self.colors['text_main']};
-            min-width: 160px;
+            border: none;
         """)
         self.cal_label.setAlignment(Qt.AlignCenter)
 
-        next_btn = StyledButton("▶", self.colors["primary"], compact=True)
-        next_btn.setFixedSize(44, 44)
+        next_btn = QPushButton("次月  ▶")
+        next_btn.setFixedHeight(44)
+        next_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.colors['primary']};
+                font-size: 14px;
+                font-weight: 600;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{ background: #EFF6FF; }}
+        """)
         next_btn.clicked.connect(self.next_month)
 
         ctrl_layout.addWidget(prev_btn)
+        ctrl_layout.addStretch()
         ctrl_layout.addWidget(self.cal_label)
+        ctrl_layout.addStretch()
         ctrl_layout.addWidget(next_btn)
         layout.addWidget(ctrl_f)
 
+        # カレンダーグリッド
         card = QWidget()
         card.setStyleSheet(f"""
             background-color: {self.colors['card_bg']};
             border-radius: 14px;
             border: 1px solid #E5E7EB;
-            padding: 16px;
+            padding: 12px;
         """)
         self.calendar_grid_layout = QGridLayout(card)
-        self.calendar_grid_layout.setSpacing(6)
+        self.calendar_grid_layout.setSpacing(5)
         self.calendar_grid_layout.setAlignment(Qt.AlignCenter)
-        layout.addWidget(card)
+        layout.addWidget(card, stretch=1)
 
-        layout.addStretch()
         self.stacked_widget.addWidget(screen)
         self.screens["calendar"] = screen
 
