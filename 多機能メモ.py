@@ -1255,11 +1255,14 @@ class MultiApp(QMainWindow):
 
         # カレンダーグリッド
         card = QWidget()
+        card.setObjectName("calCard")
         card.setStyleSheet(f"""
-            background-color: {self.colors['card_bg']};
-            border-radius: 14px;
-            border: 1px solid #45475A;
-            padding: 14px;
+            QWidget#calCard {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 14px;
+                border: 1px solid #45475A;
+                padding: 14px;
+            }}
         """)
         self.calendar_grid_layout = QGridLayout(card)
         self.calendar_grid_layout.setSpacing(5)
