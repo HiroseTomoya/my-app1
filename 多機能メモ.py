@@ -178,20 +178,28 @@ class MultiApp(QMainWindow):
 
     def load_all_data(self):
         if os.path.exists(self.DATA_FILE):
-            with open(self.DATA_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                self.todo_items = d.get("todo", [])
-                self.memo_data = d.get("memo", {"メイン": ""})
-                self.calendar_notes = d.get("calendar", {})
+            try:
+                with open(self.DATA_FILE, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    self.todo_items = d.get("todo", [])
+                    self.memo_data = d.get("memo", {"メイン": ""})
+                    self.calendar_notes = d.get("calendar", {})
+            except (json.JSONDecodeError, ValueError):
+                self.todo_items, self.memo_data, self.calendar_notes = [], {"メイン": ""}, {}
         else:
             self.todo_items, self.memo_data, self.calendar_notes = [], {"メイン": ""}, {}
 
         if os.path.exists(self.VAULT_FILE):
-            with open(self.VAULT_FILE, "r", encoding="utf-8") as f:
-                v = json.load(f)
-                self.master_hash = v.get("hash")
-                self.birth_hash = v.get("birth_hash")
-                self.vault_items = v.get("items", [])
+            try:
+                with open(self.VAULT_FILE, "r", encoding="utf-8") as f:
+                    v = json.load(f)
+                    self.master_hash = v.get("hash")
+                    self.birth_hash = v.get("birth_hash")
+                    self.vault_items = v.get("items", [])
+            except (json.JSONDecodeError, ValueError):
+                self.master_hash = None
+                self.birth_hash = None
+                self.vault_items = []
         else:
             self.master_hash, self.birth_hash, self.vault_items = None, None, []
 
