@@ -3,6 +3,7 @@ import os
 import json
 import shutil
 import calendar
+import colorsys
 from datetime import datetime, date, timedelta
 
 from PySide6.QtCore import Qt, QDate
@@ -21,12 +22,6 @@ COMPANY_COLOR_PALETTE = [
     "#F38BA8", "#FAB387", "#F9E2AF", "#A6E3A1", "#94E2D5", "#89DCEB",
     "#74C7EC", "#89B4FA", "#B4BEFE", "#CBA6F7", "#F5C2E7", "#EBA0AC",
     "#E6C58A", "#9CCFD8", "#C4A7E7", "#FFA07A",
-]
-
-# 選考状況を追加したときに自動で割り当てる枠色のパレット
-STATUS_COLOR_POOL = [
-    "#F2CDCD", "#B5E8B0", "#8CD9E8", "#D9C2F0", "#F0D48C", "#8CA9F0",
-    "#F0A0C2", "#A0F0D0", "#F0E08C", "#C2A0F0",
 ]
 
 # あらかじめ用意しておく選考状況（名称, 枠色）。「インターン参加確定」も最初から用意する。
@@ -98,6 +93,40 @@ def hex_to_rgba(hex_color, alpha):
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
+def color_distance(hex1, hex2):
+    """2つの色の見た目の近さを表す距離（大きいほど見分けやすい、redmean近似で人の目の感度に合わせて重み付け）"""
+    h1, h2 = hex1.lstrip("#"), hex2.lstrip("#")
+    r1, g1, b1 = int(h1[0:2], 16), int(h1[2:4], 16), int(h1[4:6], 16)
+    r2, g2, b2 = int(h2[0:2], 16), int(h2[2:4], 16), int(h2[4:6], 16)
+    rmean = (r1 + r2) / 2
+    dr, dg, db = r1 - r2, g1 - g2, b1 - b2
+    return ((2 + rmean / 256) * dr ** 2 + 4 * dg ** 2 + (2 + (255 - rmean) / 256) * db ** 2) ** 0.5
+
+
+def generate_status_color(index):
+    """黄金角で色相を回転させ、彩度・明度も少しずつ揺らしながら淡いトーンの色を無制限に生成する"""
+    hue = (index * 0.6180339887) % 1.0
+    lightness = 0.68 + 0.10 * ((index * 0.37) % 1.0)
+    saturation = 0.5 + 0.3 * ((index * 0.53) % 1.0)
+    r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+
+
+def pick_distinct_color(used_colors, min_distance=110, max_candidates=200):
+    """既存の色となるべく被らない色を、色相・彩度・明度を揺らしながら探す（見つからなければ一番マシなものを返す）"""
+    best_color, best_score = generate_status_color(0), -1
+    for i in range(max_candidates):
+        candidate = generate_status_color(i)
+        if not used_colors:
+            return candidate
+        nearest = min(color_distance(candidate, c) for c in used_colors)
+        if nearest >= min_distance:
+            return candidate
+        if nearest > best_score:
+            best_score, best_color = nearest, candidate
+    return best_color
+
+
 class RecruitmentData:
     """企業マスタ・選考状況マスタ・予定データの読み込み/保存を担当する"""
 
@@ -130,6 +159,19 @@ class RecruitmentData:
             self.last_notify_check = d.get("last_notify_check", "")
         if not self.statuses:
             self.statuses = [{"name": n, "color": c, "preset": True} for n, c in STATUS_PRESETS]
+        if self._resolve_status_color_conflicts():
+            self.save()
+
+    def _resolve_status_color_conflicts(self):
+        """既存データに、見分けにくいほど近い色の選考状況がないか調べ、あれば追加分の色を振り直す"""
+        changed = False
+        assigned_colors = []
+        for s in self.statuses:
+            if not s.get("preset") and any(color_distance(s["color"], c) < 70 for c in assigned_colors):
+                s["color"] = pick_distinct_color(assigned_colors)
+                changed = True
+            assigned_colors.append(s["color"])
+        return changed
 
     def save(self):
         data = {
@@ -151,7 +193,8 @@ class RecruitmentData:
         self.companies[name] = color
 
     def add_status(self, name):
-        color = STATUS_COLOR_POOL[len(self.statuses) % len(STATUS_COLOR_POOL)]
+        used_colors = [s["color"] for s in self.statuses]
+        color = pick_distinct_color(used_colors)
         self.statuses.append({"name": name, "color": color, "preset": False})
 
     def status_color(self, name):
