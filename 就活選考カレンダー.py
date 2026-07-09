@@ -159,6 +159,23 @@ class RecruitmentData:
         return hits
 
 
+def prompt_add_company(rdata: "RecruitmentData", parent):
+    """企業追加ダイアログを開き、確定された企業名を返す（キャンセル/無効入力時はNone）"""
+    next_color = COMPANY_COLOR_PALETTE[len(rdata.companies) % len(COMPANY_COLOR_PALETTE)]
+    dialog = AddCompanyDialog(next_color, parent=parent)
+    if dialog.exec_() != QDialog.Accepted:
+        return None
+    name, color = dialog.result_data()
+    if not name:
+        QMessageBox.warning(parent, "エラー", "企業名を入力してください。")
+        return None
+    if name in rdata.companies:
+        QMessageBox.warning(parent, "エラー", "同じ名前の企業が既に登録されています。")
+        return None
+    rdata.add_company(name, color)
+    return name
+
+
 def color_chip_style(bg_color, border_color=None, text_color="#1E1E2E"):
     border = border_color or bg_color
     return f"""
@@ -375,17 +392,8 @@ class EventDialog(QDialog):
                 self.status_combo.setCurrentIndex(idx)
 
     def add_new_company(self):
-        next_color = COMPANY_COLOR_PALETTE[len(self.rdata.companies) % len(COMPANY_COLOR_PALETTE)]
-        dialog = AddCompanyDialog(next_color, parent=self)
-        if dialog.exec_() == QDialog.Accepted:
-            name, color = dialog.result_data()
-            if not name:
-                QMessageBox.warning(self, "エラー", "企業名を入力してください。")
-                return
-            if name in self.rdata.companies:
-                QMessageBox.warning(self, "エラー", "同じ名前の企業が既に登録されています。")
-                return
-            self.rdata.add_company(name, color)
+        name = prompt_add_company(self.rdata, self)
+        if name:
             self.refresh_company_combo(select=name)
 
     def add_new_status(self):
@@ -620,9 +628,15 @@ class RecruitmentCalendarWindow(QMainWindow):
         self.notify_scroll.setWidget(self.notify_container)
         right.addWidget(self.notify_scroll)
 
+        company_header = QHBoxLayout()
         company_title = QLabel("登録済みの企業")
         company_title.setStyleSheet("font-weight:800; font-size:14px; margin-top:8px;")
-        right.addWidget(company_title)
+        company_header.addWidget(company_title)
+        company_header.addStretch()
+        add_company_btn = StyledButton("＋ 企業を追加", COLORS["accent"], compact=True)
+        add_company_btn.clicked.connect(self.open_add_company_standalone)
+        company_header.addWidget(add_company_btn)
+        right.addLayout(company_header)
         self.company_scroll = QScrollArea()
         self.company_scroll.setWidgetResizable(True)
         self.company_scroll.setFixedHeight(160)
@@ -714,6 +728,12 @@ class RecruitmentCalendarWindow(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             self.rdata.save()
             self.on_data_changed()
+
+    def open_add_company_standalone(self):
+        name = prompt_add_company(self.rdata, self)
+        if name:
+            self.rdata.save()
+            self.refresh_side_panels()
 
     def on_data_changed(self):
         self.draw_calendar()
