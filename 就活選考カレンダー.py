@@ -163,21 +163,31 @@ class RecruitmentData:
             self.last_notify_check = d.get("last_notify_check", "")
         if not self.statuses:
             self.statuses = [{"name": n, "color": c, "preset": True} for n, c in STATUS_PRESETS]
-        needs_save = self._migrate_events_to_date_range()
+        needs_save = self._migrate_events_to_date_list()
         if self._resolve_status_color_conflicts():
             needs_save = True
         if needs_save:
             self.save()
 
-    def _migrate_events_to_date_range(self):
-        """旧形式（単一のdateのみ）の予定を、複数日インターンに対応したstart_date/end_dateに変換する"""
+    def _migrate_events_to_date_list(self):
+        """旧形式（単一date、または連続したstart_date/end_date）の予定を、
+        歯抜けのある複数日にも対応した日付リスト（dates）に変換する"""
         changed = False
         for e in self.events:
-            if "start_date" not in e:
-                single_date = e.pop("date", today_str())
-                e["start_date"] = single_date
-                e["end_date"] = single_date
-                changed = True
+            if "dates" in e:
+                continue
+            if "start_date" in e and "end_date" in e:
+                start = datetime.strptime(e.pop("start_date"), "%Y-%m-%d").date()
+                end = datetime.strptime(e.pop("end_date"), "%Y-%m-%d").date()
+                days = []
+                d = start
+                while d <= end:
+                    days.append(d.isoformat())
+                    d += timedelta(days=1)
+                e["dates"] = days
+            else:
+                e["dates"] = [e.pop("date", today_str())]
+            changed = True
         return changed
 
     def _resolve_status_color_conflicts(self):
@@ -232,20 +242,19 @@ class RecruitmentData:
         return (max((e["id"] for e in self.events), default=0)) + 1
 
     def events_on(self, day_iso):
-        """カレンダーに表示する、その日にかかる予定（内定は専用リストにのみ表示するため除く）"""
+        """カレンダーに表示する、その日を含む予定（内定は専用リストにのみ表示するため除く）"""
         return [
             e for e in self.events
-            if e["start_date"] <= day_iso <= e["end_date"] and e["status"] != OFFER_STATUS_NAME
+            if day_iso in e["dates"] and e["status"] != OFFER_STATUS_NAME
         ]
 
     def upcoming_events(self, within_days=7):
         result = []
         today = date.today()
         for e in self.events:
-            try:
-                d = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
-            except ValueError:
+            if not e.get("dates"):
                 continue
+            d = datetime.strptime(min(e["dates"]), "%Y-%m-%d").date()
             days_left = (d - today).days
             if 0 <= days_left <= within_days:
                 result.append((days_left, e))
@@ -257,10 +266,9 @@ class RecruitmentData:
         today = date.today()
         hits = []
         for e in self.events:
-            try:
-                d = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
-            except ValueError:
+            if not e.get("dates"):
                 continue
+            d = datetime.strptime(min(e["dates"]), "%Y-%m-%d").date()
             days_left = (d - today).days
             if days_left in e.get("notify_days", []):
                 hits.append(e)
@@ -284,11 +292,23 @@ def prompt_add_company(rdata: "RecruitmentData", parent):
     return name
 
 
-def event_date_range_text(event):
-    """単日なら日付のみ、複数日にわたる予定なら「開始日 〜 終了日」の形で表示する"""
-    if event["start_date"] == event["end_date"]:
-        return event["start_date"]
-    return f"{event['start_date']} 〜 {event['end_date']}"
+def event_dates_text(event):
+    """日付リストを、連続した日はまとめて「開始〜終了」、飛び飛びの日は読点区切りで表示する"""
+    dates = sorted(event.get("dates", []))
+    if not dates:
+        return ""
+    parsed = [datetime.strptime(d, "%Y-%m-%d").date() for d in dates]
+    runs = []
+    run_start = run_end = parsed[0]
+    for d in parsed[1:]:
+        if (d - run_end).days == 1:
+            run_end = d
+            continue
+        runs.append((run_start, run_end))
+        run_start = run_end = d
+    runs.append((run_start, run_end))
+    parts = [s.isoformat() if s == e else f"{s.isoformat()}〜{e.isoformat()}" for s, e in runs]
+    return "、".join(parts)
 
 
 def color_chip_style(bg_color, border_color=None, text_color=None):
@@ -415,7 +435,7 @@ def build_event_summary_row(rdata, event, on_edit, on_delete):
     chip.setStyleSheet(color_chip_style(company_color, status_color))
     row_layout.addWidget(chip)
 
-    date_lbl = QLabel(event_date_range_text(event))
+    date_lbl = QLabel(event_dates_text(event))
     date_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:10px; border:none;")
     date_lbl.setWordWrap(True)
     row_layout.addWidget(date_lbl, stretch=1)
@@ -590,18 +610,37 @@ class EventDialog(QDialog):
         status_row.addWidget(add_status_btn)
         layout.addLayout(status_row)
 
-        layout.addWidget(QLabel("開始日 / 実施日（面接日・インターン開始日など）"))
-        self.start_date_edit = QDateEdit()
-        self.start_date_edit.setCalendarPopup(True)
-        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
-        self.start_date_edit.dateChanged.connect(self._on_start_date_changed)
-        layout.addWidget(self.start_date_edit)
+        self.selected_dates = set()
 
-        layout.addWidget(QLabel("終了日（複数日にわたるインターンなどの場合。単日なら同じ日でOK）"))
-        self.end_date_edit = QDateEdit()
-        self.end_date_edit.setCalendarPopup(True)
-        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
-        layout.addWidget(self.end_date_edit)
+        layout.addWidget(QLabel("日付（面接日・締切日など。複数日にわたるインターンは期間でまとめて追加でき、途中の空き日も個別に外せます）"))
+
+        range_row = QHBoxLayout()
+        range_row.setSpacing(6)
+        self.range_start_edit = QDateEdit()
+        self.range_start_edit.setCalendarPopup(True)
+        self.range_start_edit.setDisplayFormat("yyyy-MM-dd")
+        self.range_start_edit.dateChanged.connect(self._on_range_start_changed)
+        self.range_end_edit = QDateEdit()
+        self.range_end_edit.setCalendarPopup(True)
+        self.range_end_edit.setDisplayFormat("yyyy-MM-dd")
+        range_row.addWidget(self.range_start_edit, stretch=1)
+        range_row.addWidget(QLabel("〜"))
+        range_row.addWidget(self.range_end_edit, stretch=1)
+        add_range_btn = StyledButton("＋期間で追加", COLORS["primary"], compact=True)
+        add_range_btn.clicked.connect(self.add_date_range)
+        range_row.addWidget(add_range_btn)
+        layout.addLayout(range_row)
+
+        layout.addWidget(QLabel("選択中の日付（×で個別に空き日を作れます）"))
+        self.dates_scroll = QScrollArea()
+        self.dates_scroll.setWidgetResizable(True)
+        self.dates_scroll.setFixedHeight(120)
+        self.dates_container = QWidget()
+        self.dates_layout = QVBoxLayout(self.dates_container)
+        self.dates_layout.setAlignment(Qt.AlignTop)
+        self.dates_layout.setSpacing(4)
+        self.dates_scroll.setWidget(self.dates_container)
+        layout.addWidget(self.dates_scroll)
 
         layout.addWidget(QLabel("メモ（任意）"))
         self.memo_edit = QLineEdit()
@@ -632,8 +671,9 @@ class EventDialog(QDialog):
 
         if initial_date:
             qdate = QDate(initial_date.year, initial_date.month, initial_date.day)
-            self.start_date_edit.setDate(qdate)
-            self.end_date_edit.setDate(qdate)
+            self.range_start_edit.setDate(qdate)
+            self.range_end_edit.setDate(qdate)
+            self.selected_dates.add(initial_date.isoformat())
 
         if editing_event:
             idx = self.company_combo.findText(editing_event["company"])
@@ -642,19 +682,63 @@ class EventDialog(QDialog):
             idx = self.status_combo.findText(editing_event["status"])
             if idx >= 0:
                 self.status_combo.setCurrentIndex(idx)
-            start = datetime.strptime(editing_event["start_date"], "%Y-%m-%d").date()
-            end = datetime.strptime(editing_event["end_date"], "%Y-%m-%d").date()
-            self.start_date_edit.setDate(QDate(start.year, start.month, start.day))
-            self.end_date_edit.setDate(QDate(end.year, end.month, end.day))
+            self.selected_dates = set(editing_event.get("dates", []))
             self.memo_edit.setText(editing_event.get("memo", ""))
             for days in editing_event.get("notify_days", []):
                 if days in self.notify_checks:
                     self.notify_checks[days].setChecked(True)
 
-    def _on_start_date_changed(self, qdate):
-        """開始日を終了日より後にした場合、終了日も自動で合わせる（複数日インターンの逆転を防ぐ）"""
-        if self.end_date_edit.date() < qdate:
-            self.end_date_edit.setDate(qdate)
+        if not self.selected_dates:
+            self.selected_dates.add(date.today().isoformat())
+        self.refresh_dates_list()
+
+    def _on_range_start_changed(self, qdate):
+        """開始日を終了日より後にした場合、終了日も自動で合わせる（期間の逆転を防ぐ）"""
+        if self.range_end_edit.date() < qdate:
+            self.range_end_edit.setDate(qdate)
+
+    def add_date_range(self):
+        start = self.range_start_edit.date()
+        end = self.range_end_edit.date()
+        if end < start:
+            QMessageBox.warning(self, "エラー", "終了日は開始日以降にしてください。")
+            return
+        d = start
+        while d <= end:
+            self.selected_dates.add(d.toString("yyyy-MM-dd"))
+            d = d.addDays(1)
+        self.refresh_dates_list()
+
+    def remove_date(self, iso_date):
+        self.selected_dates.discard(iso_date)
+        self.refresh_dates_list()
+
+    def refresh_dates_list(self):
+        while self.dates_layout.count():
+            child = self.dates_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if not self.selected_dates:
+            empty = QLabel("日付が選択されていません。")
+            empty.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
+            self.dates_layout.addWidget(empty)
+            return
+
+        weekday_names = ["月", "火", "水", "木", "金", "土", "日"]
+        for iso_date in sorted(self.selected_dates):
+            d = datetime.strptime(iso_date, "%Y-%m-%d").date()
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(4, 0, 4, 0)
+            row_layout.setSpacing(6)
+            lbl = QLabel(f"{iso_date}（{weekday_names[d.weekday()]}）")
+            lbl.setStyleSheet(f"color:{COLORS['text_main']}; font-size:12px; border:none;")
+            row_layout.addWidget(lbl, stretch=1)
+            del_btn = IconButton("×", COLORS["danger"], size=20)
+            del_btn.clicked.connect(lambda checked=False, dd=iso_date: self.remove_date(dd))
+            row_layout.addWidget(del_btn)
+            self.dates_layout.addWidget(row)
 
     def refresh_company_combo(self, select=None):
         self.company_combo.clear()
@@ -697,8 +781,8 @@ class EventDialog(QDialog):
         if self.status_combo.count() == 0:
             QMessageBox.warning(self, "エラー", "選考状況を選択してください。")
             return
-        if self.end_date_edit.date() < self.start_date_edit.date():
-            QMessageBox.warning(self, "エラー", "終了日は開始日以降の日付にしてください。")
+        if not self.selected_dates:
+            QMessageBox.warning(self, "エラー", "日付を1つ以上追加してください。")
             return
 
         notify_days = [days for days, cb in self.notify_checks.items() if cb.isChecked()]
@@ -706,8 +790,7 @@ class EventDialog(QDialog):
             "id": self.editing_event["id"] if self.editing_event else self.rdata.next_event_id(),
             "company": self.company_combo.currentText(),
             "status": self.status_combo.currentText(),
-            "start_date": self.start_date_edit.date().toString("yyyy-MM-dd"),
-            "end_date": self.end_date_edit.date().toString("yyyy-MM-dd"),
+            "dates": sorted(self.selected_dates),
             "memo": self.memo_edit.text().strip(),
             "notify_days": notify_days,
         }
@@ -784,7 +867,7 @@ class DayDetailDialog(QDialog):
             chip.setStyleSheet(color_chip_style(company_color, status_color))
             row_layout.addWidget(chip)
 
-            detail_text = event_date_range_text(e)
+            detail_text = event_dates_text(e)
             if e.get("memo"):
                 detail_text += f" ・ {e['memo']}"
             memo_lbl = QLabel(detail_text)
@@ -1172,7 +1255,7 @@ class RecruitmentCalendarWindow(QMainWindow):
         for days_left, e in upcoming:
             when = "本日" if days_left == 0 else f"あと{days_left}日"
             badge_color = COLORS["danger"] if days_left == 0 else (COLORS["warning"] if days_left <= 1 else COLORS["primary"])
-            lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{event_date_range_text(e)}）")
+            lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{event_dates_text(e)}）")
             status_color = self.rdata.status_color(e["status"])
             lbl.setWordWrap(True)
             lbl.setStyleSheet(
@@ -1182,7 +1265,7 @@ class RecruitmentCalendarWindow(QMainWindow):
             self.notify_layout.addWidget(lbl)
 
         self._clear_layout(self.offer_layout, keep_first=1)
-        offers = sorted(self.rdata.events_with_status(OFFER_STATUS_NAME), key=lambda e: e["start_date"])
+        offers = sorted(self.rdata.events_with_status(OFFER_STATUS_NAME), key=lambda e: min(e["dates"]))
         if not offers:
             lbl = QLabel("内定はまだありません。")
             lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
@@ -1192,7 +1275,7 @@ class RecruitmentCalendarWindow(QMainWindow):
             self.offer_layout.addWidget(row)
 
         self._clear_layout(self.intern_layout, keep_first=1)
-        interns = sorted(self.rdata.events_with_status(INTERN_CONFIRMED_STATUS_NAME), key=lambda e: e["start_date"])
+        interns = sorted(self.rdata.events_with_status(INTERN_CONFIRMED_STATUS_NAME), key=lambda e: min(e["dates"]))
         if not interns:
             lbl = QLabel("参加確定したインターンはまだありません。")
             lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
@@ -1250,7 +1333,7 @@ class RecruitmentCalendarWindow(QMainWindow):
         self.rdata.last_notify_check = today_str()
         self.rdata.save()
         if hits:
-            lines = [f"・{e['company']} / {e['status']}（{event_date_range_text(e)}）" for e in hits]
+            lines = [f"・{e['company']} / {e['status']}（{event_dates_text(e)}）" for e in hits]
             QMessageBox.information(
                 self, "締切・予定のお知らせ",
                 "以下の予定の通知タイミングになりました。\n\n" + "\n".join(lines)
