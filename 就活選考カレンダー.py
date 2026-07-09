@@ -197,6 +197,13 @@ class RecruitmentData:
         color = pick_distinct_color(used_colors)
         self.statuses.append({"name": name, "color": color, "preset": False})
 
+    def remove_status(self, name):
+        """ユーザーが追加した選考状況のみ削除できる（プリセットは削除不可）"""
+        self.statuses = [s for s in self.statuses if not (s["name"] == name and not s.get("preset"))]
+
+    def events_with_status(self, name):
+        return [e for e in self.events if e["status"] == name]
+
     def status_color(self, name):
         for s in self.statuses:
             if s["name"] == name:
@@ -1004,6 +1011,17 @@ class RecruitmentCalendarWindow(QMainWindow):
             self.rdata.save()
             self.refresh_side_panels()
 
+    def delete_status(self, name):
+        affected = self.rdata.events_with_status(name)
+        msg = f"選考状況「{name}」を削除しますか？"
+        if affected:
+            msg += f"\n\nこの状況が設定された予定が{len(affected)}件あります。予定自体は削除されず、状況名だけが一覧の選択肢から消えます。"
+        ret = QMessageBox.question(self, "確認", msg, QMessageBox.Yes | QMessageBox.No)
+        if ret == QMessageBox.Yes:
+            self.rdata.remove_status(name)
+            self.rdata.save()
+            self.on_data_changed()
+
     def on_data_changed(self):
         self.draw_calendar()
         self.refresh_side_panels()
@@ -1061,6 +1079,11 @@ class RecruitmentCalendarWindow(QMainWindow):
 
         self._clear_layout(self.status_layout, keep_first=1)
         for s in self.rdata.statuses:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+
             preset_mark = "" if s.get("preset") else " ・追加"
             lbl = QLabel(f"{s['name']}{preset_mark}")
             lbl.setStyleSheet(
@@ -1068,7 +1091,15 @@ class RecruitmentCalendarWindow(QMainWindow):
                 f"font-size:11px; font-weight:700; color:{COLORS['text_main']}; "
                 f"background-color:{hex_to_rgba(s['color'], 0.20)};"
             )
-            self.status_layout.addWidget(lbl)
+            row_layout.addWidget(lbl)
+
+            if not s.get("preset"):
+                del_btn = IconButton("×", COLORS["danger"], size=22)
+                del_btn.clicked.connect(lambda checked=False, name=s["name"]: self.delete_status(name))
+                row_layout.addWidget(del_btn)
+
+            row_layout.addStretch()
+            self.status_layout.addWidget(row)
 
     @staticmethod
     def _clear_layout(layout, keep_first=0):
