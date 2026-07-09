@@ -83,6 +83,21 @@ def adjust_color(hex_color, amount):
     return f"#{clamp(r + amount):02x}{clamp(g + amount):02x}{clamp(b + amount):02x}"
 
 
+def contrasting_text_color(hex_color):
+    """背景色の明るさに応じて、読みやすい文字色（黒系/白系）を自動で選ぶ"""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return "#1E1E2E" if luminance > 0.6 else "#FFFFFF"
+
+
+def hex_to_rgba(hex_color, alpha):
+    """背景に薄く色を乗せるためのrgba()文字列に変換する"""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 class RecruitmentData:
     """企業マスタ・選考状況マスタ・予定データの読み込み/保存を担当する"""
 
@@ -197,8 +212,10 @@ def prompt_add_company(rdata: "RecruitmentData", parent):
     return name
 
 
-def color_chip_style(bg_color, border_color=None, text_color="#1E1E2E"):
+def color_chip_style(bg_color, border_color=None, text_color=None):
     border = border_color or bg_color
+    if text_color is None:
+        text_color = contrasting_text_color(bg_color)
     return f"""
         background-color: {bg_color};
         border: 3px solid {border};
@@ -856,7 +873,11 @@ class RecruitmentCalendarWindow(QMainWindow):
         for i, wd in enumerate(weekdays):
             lbl = QLabel(wd)
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(f"font-weight:800; font-size:12px; color:{weekday_colors[i]}; padding:4px 0;")
+            tint = hex_to_rgba(weekday_colors[i], 0.16) if i >= 5 else "transparent"
+            lbl.setStyleSheet(
+                f"font-weight:800; font-size:12px; color:{weekday_colors[i]}; "
+                f"background-color:{tint}; border-radius:8px; padding:4px 0;"
+            )
             self.calendar_grid.addWidget(lbl, 0, i)
 
         weeks = calendar.monthcalendar(self.cur_year, self.cur_month)
@@ -873,11 +894,13 @@ class RecruitmentCalendarWindow(QMainWindow):
                 cell.setMinimumSize(140, 96)
                 cell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 if is_today:
-                    bg = f"rgba(137, 180, 250, 0.16)"
+                    bg = hex_to_rgba(COLORS["primary"], 0.20)
+                    bg_hover = hex_to_rgba(COLORS["primary"], 0.30)
                     border_color = COLORS["primary"]
                     border_width = 2
                 else:
-                    bg = COLORS["bg_base"]
+                    bg = adjust_color(COLORS["bg_base"], 8)
+                    bg_hover = adjust_color(COLORS["bg_base"], 18)
                     border_color = COLORS["surface1"]
                     border_width = 1
                 cell.setStyleSheet(f"""
@@ -887,6 +910,7 @@ class RecruitmentCalendarWindow(QMainWindow):
                         border-radius: 12px;
                     }}
                     QFrame:hover {{
+                        background-color: {bg_hover};
                         border: {border_width}px solid {COLORS['primary']};
                     }}
                 """)
@@ -998,7 +1022,8 @@ class RecruitmentCalendarWindow(QMainWindow):
             lbl = QLabel(f"{s['name']}{preset_mark}")
             lbl.setStyleSheet(
                 f"border:3px solid {s['color']}; border-radius:20px; padding:4px 10px; "
-                f"font-size:11px; font-weight:700; color:{COLORS['text_main']}; background:transparent;"
+                f"font-size:11px; font-weight:700; color:{COLORS['text_main']}; "
+                f"background-color:{hex_to_rgba(s['color'], 0.20)};"
             )
             self.status_layout.addWidget(lbl)
 
