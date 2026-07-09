@@ -42,24 +42,28 @@ STATUS_PRESETS = [
 # 通知タイミングの選択肢（締切/実施日の何日前に知らせるか）
 NOTIFY_CHOICES = [(3, "3日前"), (1, "前日"), (0, "当日")]
 
-# --- カラーパレット（Catppuccin Mocha ベースの階層構造）---
+# カレンダー上には表示せず、専用リストで表示する選考状況
+OFFER_STATUS_NAME = "内定"
+INTERN_CONFIRMED_STATUS_NAME = "インターン参加確定"
+
+# --- カラーパレット（Catppuccin Latte ベースの、白を基調としたライトテーマ）---
 COLORS = {
-    "bg_base": "#1E1E2E",
-    "bg_mantle": "#181825",
-    "bg_crust": "#11111B",
-    "card_bg": "#313244",
-    "surface1": "#45475A",
-    "surface2": "#585B70",
-    "border": "#45475A",
-    "overlay": "#6C7086",
-    "primary": "#89B4FA",
-    "accent": "#CBA6F7",
-    "success": "#A6E3A1",
-    "danger": "#F38BA8",
-    "warning": "#FAB387",
-    "text_main": "#CDD6F4",
-    "text_sub": "#A6ADC8",
-    "text_sub2": "#7F849C",
+    "bg_base": "#F4F6FB",
+    "bg_mantle": "#E9ECF3",
+    "bg_crust": "#DCE0EA",
+    "card_bg": "#FFFFFF",
+    "surface1": "#D4D8E3",
+    "surface2": "#B8BFD1",
+    "border": "#D4D8E3",
+    "overlay": "#9CA3B8",
+    "primary": "#1E66F5",
+    "accent": "#8839EF",
+    "success": "#3FA34D",
+    "danger": "#D20F39",
+    "warning": "#FE640B",
+    "text_main": "#3B3F51",
+    "text_sub": "#6C7086",
+    "text_sub2": "#8C90A4",
 }
 
 
@@ -159,8 +163,22 @@ class RecruitmentData:
             self.last_notify_check = d.get("last_notify_check", "")
         if not self.statuses:
             self.statuses = [{"name": n, "color": c, "preset": True} for n, c in STATUS_PRESETS]
+        needs_save = self._migrate_events_to_date_range()
         if self._resolve_status_color_conflicts():
+            needs_save = True
+        if needs_save:
             self.save()
+
+    def _migrate_events_to_date_range(self):
+        """旧形式（単一のdateのみ）の予定を、複数日インターンに対応したstart_date/end_dateに変換する"""
+        changed = False
+        for e in self.events:
+            if "start_date" not in e:
+                single_date = e.pop("date", today_str())
+                e["start_date"] = single_date
+                e["end_date"] = single_date
+                changed = True
+        return changed
 
     def _resolve_status_color_conflicts(self):
         """既存データに、見分けにくいほど近い色の選考状況がないか調べ、あれば追加分の色を振り直す"""
@@ -214,14 +232,18 @@ class RecruitmentData:
         return (max((e["id"] for e in self.events), default=0)) + 1
 
     def events_on(self, day_iso):
-        return [e for e in self.events if e["date"] == day_iso]
+        """カレンダーに表示する、その日にかかる予定（内定は専用リストにのみ表示するため除く）"""
+        return [
+            e for e in self.events
+            if e["start_date"] <= day_iso <= e["end_date"] and e["status"] != OFFER_STATUS_NAME
+        ]
 
     def upcoming_events(self, within_days=7):
         result = []
         today = date.today()
         for e in self.events:
             try:
-                d = datetime.strptime(e["date"], "%Y-%m-%d").date()
+                d = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
             except ValueError:
                 continue
             days_left = (d - today).days
@@ -236,7 +258,7 @@ class RecruitmentData:
         hits = []
         for e in self.events:
             try:
-                d = datetime.strptime(e["date"], "%Y-%m-%d").date()
+                d = datetime.strptime(e["start_date"], "%Y-%m-%d").date()
             except ValueError:
                 continue
             days_left = (d - today).days
@@ -260,6 +282,13 @@ def prompt_add_company(rdata: "RecruitmentData", parent):
         return None
     rdata.add_company(name, color)
     return name
+
+
+def event_date_range_text(event):
+    """単日なら日付のみ、複数日にわたる予定なら「開始日 〜 終了日」の形で表示する"""
+    if event["start_date"] == event["end_date"]:
+        return event["start_date"]
+    return f"{event['start_date']} 〜 {event['end_date']}"
 
 
 def color_chip_style(bg_color, border_color=None, text_color=None):
@@ -287,6 +316,7 @@ class StyledButton(QPushButton):
         font_size = "13px" if compact else "14px"
         hover_color = adjust_color(base_color, 22)
         pressed_color = adjust_color(base_color, -18)
+        text_color = contrasting_text_color(base_color)
 
         if gradient_to:
             bg = f"qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {base_color}, stop:1 {gradient_to})"
@@ -298,7 +328,7 @@ class StyledButton(QPushButton):
         self.setStyleSheet(f"""
             QPushButton {{
                 background: {bg};
-                color: #1E1E2E;
+                color: {text_color};
                 font-weight: 700;
                 font-size: {font_size};
                 border: none;
@@ -327,10 +357,11 @@ class IconButton(QPushButton):
         self.setCursor(QCursor(Qt.PointingHandCursor))
         self.setFixedSize(size, size)
         hover_color = adjust_color(base_color, 25)
+        text_color = contrasting_text_color(base_color)
         self.setStyleSheet(f"""
             QPushButton {{
                 background-color: {base_color};
-                color: {COLORS['text_main']};
+                color: {text_color};
                 font-size: 16px;
                 font-weight: 700;
                 border: none;
@@ -348,6 +379,7 @@ class OutlineButton(QPushButton):
     def __init__(self, text, color, parent=None):
         super().__init__(text, parent)
         self.setCursor(QCursor(Qt.PointingHandCursor))
+        hover_text_color = contrasting_text_color(color)
         self.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
@@ -360,9 +392,43 @@ class OutlineButton(QPushButton):
             }}
             QPushButton:hover {{
                 background-color: {color};
-                color: #1E1E2E;
+                color: {hover_text_color};
             }}
         """)
+
+
+def build_event_summary_row(rdata, event, on_edit, on_delete):
+    """内定・インターン参加確定リストなど、右パネルの予定サマリー行（企業/状況チップ＋日付＋編集・削除）を作る"""
+    row = QFrame()
+    row.setStyleSheet(
+        f"background-color:{COLORS['bg_base']}; border-radius:12px; border:1px solid {COLORS['surface1']};"
+    )
+    row_layout = QHBoxLayout(row)
+    row_layout.setContentsMargins(10, 6, 6, 6)
+    row_layout.setSpacing(6)
+
+    company_color = rdata.companies.get(event["company"], COLORS["border"])
+    status_color = rdata.status_color(event["status"])
+    chip = QLabel()
+    metrics = QFontMetrics(chip.font())
+    chip.setText(metrics.elidedText(event["company"], Qt.ElideRight, 92))
+    chip.setStyleSheet(color_chip_style(company_color, status_color))
+    row_layout.addWidget(chip)
+
+    date_lbl = QLabel(event_date_range_text(event))
+    date_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:10px; border:none;")
+    date_lbl.setWordWrap(True)
+    row_layout.addWidget(date_lbl, stretch=1)
+
+    edit_btn = IconButton("✏️", COLORS["primary"], size=26)
+    edit_btn.clicked.connect(lambda checked=False, ev=event: on_edit(ev))
+    row_layout.addWidget(edit_btn)
+
+    del_btn = IconButton("🗑", COLORS["danger"], size=26)
+    del_btn.clicked.connect(lambda checked=False, ev=event: on_delete(ev))
+    row_layout.addWidget(del_btn)
+
+    return row
 
 
 def section_card(title_text, icon, action_button=None):
@@ -524,11 +590,18 @@ class EventDialog(QDialog):
         status_row.addWidget(add_status_btn)
         layout.addLayout(status_row)
 
-        layout.addWidget(QLabel("締切日 / 実施日（面接日・インターン参加日など）"))
-        self.date_edit = QDateEdit()
-        self.date_edit.setCalendarPopup(True)
-        self.date_edit.setDisplayFormat("yyyy-MM-dd")
-        layout.addWidget(self.date_edit)
+        layout.addWidget(QLabel("開始日 / 実施日（面接日・インターン開始日など）"))
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_edit.dateChanged.connect(self._on_start_date_changed)
+        layout.addWidget(self.start_date_edit)
+
+        layout.addWidget(QLabel("終了日（複数日にわたるインターンなどの場合。単日なら同じ日でOK）"))
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        layout.addWidget(self.end_date_edit)
 
         layout.addWidget(QLabel("メモ（任意）"))
         self.memo_edit = QLineEdit()
@@ -558,7 +631,9 @@ class EventDialog(QDialog):
         self.refresh_status_combo()
 
         if initial_date:
-            self.date_edit.setDate(QDate(initial_date.year, initial_date.month, initial_date.day))
+            qdate = QDate(initial_date.year, initial_date.month, initial_date.day)
+            self.start_date_edit.setDate(qdate)
+            self.end_date_edit.setDate(qdate)
 
         if editing_event:
             idx = self.company_combo.findText(editing_event["company"])
@@ -567,12 +642,19 @@ class EventDialog(QDialog):
             idx = self.status_combo.findText(editing_event["status"])
             if idx >= 0:
                 self.status_combo.setCurrentIndex(idx)
-            d = datetime.strptime(editing_event["date"], "%Y-%m-%d").date()
-            self.date_edit.setDate(QDate(d.year, d.month, d.day))
+            start = datetime.strptime(editing_event["start_date"], "%Y-%m-%d").date()
+            end = datetime.strptime(editing_event["end_date"], "%Y-%m-%d").date()
+            self.start_date_edit.setDate(QDate(start.year, start.month, start.day))
+            self.end_date_edit.setDate(QDate(end.year, end.month, end.day))
             self.memo_edit.setText(editing_event.get("memo", ""))
             for days in editing_event.get("notify_days", []):
                 if days in self.notify_checks:
                     self.notify_checks[days].setChecked(True)
+
+    def _on_start_date_changed(self, qdate):
+        """開始日を終了日より後にした場合、終了日も自動で合わせる（複数日インターンの逆転を防ぐ）"""
+        if self.end_date_edit.date() < qdate:
+            self.end_date_edit.setDate(qdate)
 
     def refresh_company_combo(self, select=None):
         self.company_combo.clear()
@@ -615,13 +697,17 @@ class EventDialog(QDialog):
         if self.status_combo.count() == 0:
             QMessageBox.warning(self, "エラー", "選考状況を選択してください。")
             return
+        if self.end_date_edit.date() < self.start_date_edit.date():
+            QMessageBox.warning(self, "エラー", "終了日は開始日以降の日付にしてください。")
+            return
 
         notify_days = [days for days, cb in self.notify_checks.items() if cb.isChecked()]
         record = {
             "id": self.editing_event["id"] if self.editing_event else self.rdata.next_event_id(),
             "company": self.company_combo.currentText(),
             "status": self.status_combo.currentText(),
-            "date": self.date_edit.date().toString("yyyy-MM-dd"),
+            "start_date": self.start_date_edit.date().toString("yyyy-MM-dd"),
+            "end_date": self.end_date_edit.date().toString("yyyy-MM-dd"),
             "memo": self.memo_edit.text().strip(),
             "notify_days": notify_days,
         }
@@ -698,7 +784,10 @@ class DayDetailDialog(QDialog):
             chip.setStyleSheet(color_chip_style(company_color, status_color))
             row_layout.addWidget(chip)
 
-            memo_lbl = QLabel(e.get("memo", ""))
+            detail_text = event_date_range_text(e)
+            if e.get("memo"):
+                detail_text += f" ・ {e['memo']}"
+            memo_lbl = QLabel(detail_text)
             memo_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
             row_layout.addWidget(memo_lbl, stretch=1)
 
@@ -807,7 +896,7 @@ class RecruitmentCalendarWindow(QMainWindow):
             QMessageBox QLabel {{ color: {COLORS['text_main']}; font-size: 13px; }}
             QMessageBox QPushButton {{
                 background-color: {COLORS['primary']};
-                color: #1E1E2E;
+                color: {contrasting_text_color(COLORS['primary'])};
                 min-width: 90px;
                 min-height: 34px;
                 border-radius: 9px;
@@ -897,6 +986,14 @@ class RecruitmentCalendarWindow(QMainWindow):
         self.notify_layout.setSpacing(6)
         right.addWidget(notify_card)
 
+        offer_card, self.offer_layout = section_card("内定企業一覧", "🎉")
+        self.offer_layout.setSpacing(6)
+        right.addWidget(offer_card)
+
+        intern_card, self.intern_layout = section_card("インターン参加確定リスト", "🏁")
+        self.intern_layout.setSpacing(6)
+        right.addWidget(intern_card)
+
         add_company_btn = StyledButton("＋ 企業を追加", COLORS["accent"], compact=True)
         add_company_btn.clicked.connect(self.open_add_company_standalone)
         company_card, self.company_layout = section_card("登録済みの企業", "🏢", action_button=add_company_btn)
@@ -944,13 +1041,13 @@ class RecruitmentCalendarWindow(QMainWindow):
                 cell.setMinimumSize(140, 96)
                 cell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 if is_today:
-                    bg = hex_to_rgba(COLORS["primary"], 0.20)
-                    bg_hover = hex_to_rgba(COLORS["primary"], 0.30)
+                    bg = hex_to_rgba(COLORS["primary"], 0.14)
+                    bg_hover = hex_to_rgba(COLORS["primary"], 0.24)
                     border_color = COLORS["primary"]
                     border_width = 2
                 else:
-                    bg = adjust_color(COLORS["bg_base"], 8)
-                    bg_hover = adjust_color(COLORS["bg_base"], 18)
+                    bg = COLORS["bg_base"]
+                    bg_hover = adjust_color(COLORS["bg_base"], -14)
                     border_color = COLORS["surface1"]
                     border_width = 1
                 cell.setStyleSheet(f"""
@@ -1022,6 +1119,23 @@ class RecruitmentCalendarWindow(QMainWindow):
             self.rdata.save()
             self.on_data_changed()
 
+    def edit_event_from_window(self, event):
+        """内定・インターン参加確定リストなど、カレンダー以外の場所から予定を編集する"""
+        dialog = EventDialog(self.rdata, editing_event=event, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.rdata.save()
+            self.on_data_changed()
+
+    def delete_event_from_window(self, event):
+        ret = QMessageBox.question(
+            self, "確認", f"「{event['company']} / {event['status']}」の予定を削除しますか？",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if ret == QMessageBox.Yes:
+            self.rdata.events = [e for e in self.rdata.events if e["id"] != event["id"]]
+            self.rdata.save()
+            self.on_data_changed()
+
     def on_data_changed(self):
         self.draw_calendar()
         self.refresh_side_panels()
@@ -1058,7 +1172,7 @@ class RecruitmentCalendarWindow(QMainWindow):
         for days_left, e in upcoming:
             when = "本日" if days_left == 0 else f"あと{days_left}日"
             badge_color = COLORS["danger"] if days_left == 0 else (COLORS["warning"] if days_left <= 1 else COLORS["primary"])
-            lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{e['date']}）")
+            lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{event_date_range_text(e)}）")
             status_color = self.rdata.status_color(e["status"])
             lbl.setWordWrap(True)
             lbl.setStyleSheet(
@@ -1066,6 +1180,26 @@ class RecruitmentCalendarWindow(QMainWindow):
                 f"border-radius:8px; padding:7px 10px; color:{badge_color}; font-size:12px; font-weight:600;"
             )
             self.notify_layout.addWidget(lbl)
+
+        self._clear_layout(self.offer_layout, keep_first=1)
+        offers = sorted(self.rdata.events_with_status(OFFER_STATUS_NAME), key=lambda e: e["start_date"])
+        if not offers:
+            lbl = QLabel("内定はまだありません。")
+            lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
+            self.offer_layout.addWidget(lbl)
+        for e in offers:
+            row = build_event_summary_row(self.rdata, e, self.edit_event_from_window, self.delete_event_from_window)
+            self.offer_layout.addWidget(row)
+
+        self._clear_layout(self.intern_layout, keep_first=1)
+        interns = sorted(self.rdata.events_with_status(INTERN_CONFIRMED_STATUS_NAME), key=lambda e: e["start_date"])
+        if not interns:
+            lbl = QLabel("参加確定したインターンはまだありません。")
+            lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
+            self.intern_layout.addWidget(lbl)
+        for e in interns:
+            row = build_event_summary_row(self.rdata, e, self.edit_event_from_window, self.delete_event_from_window)
+            self.intern_layout.addWidget(row)
 
         self._clear_layout(self.company_layout, keep_first=1)
         if not self.rdata.companies:
@@ -1116,7 +1250,7 @@ class RecruitmentCalendarWindow(QMainWindow):
         self.rdata.last_notify_check = today_str()
         self.rdata.save()
         if hits:
-            lines = [f"・{e['company']} / {e['status']}（{e['date']}）" for e in hits]
+            lines = [f"・{e['company']} / {e['status']}（{event_date_range_text(e)}）" for e in hits]
             QMessageBox.information(
                 self, "締切・予定のお知らせ",
                 "以下の予定の通知タイミングになりました。\n\n" + "\n".join(lines)
