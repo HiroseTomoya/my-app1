@@ -281,11 +281,11 @@ class AddStatusDialog(QDialog):
 class EventDialog(QDialog):
     """予定（企業×選考状況×締切/実施日）の追加・編集"""
 
-    def __init__(self, rdata: RecruitmentData, initial_date=None, event=None, parent=None):
+    def __init__(self, rdata: RecruitmentData, initial_date=None, editing_event=None, parent=None):
         super().__init__(parent)
         self.rdata = rdata
-        self.event = event
-        self.setWindowTitle("予定を編集" if event else "予定を追加")
+        self.editing_event = editing_event
+        self.setWindowTitle("予定を編集" if editing_event else "予定を追加")
         self.setMinimumWidth(380)
 
         layout = QVBoxLayout(self)
@@ -344,17 +344,17 @@ class EventDialog(QDialog):
         if initial_date:
             self.date_edit.setDate(QDate(initial_date.year, initial_date.month, initial_date.day))
 
-        if event:
-            idx = self.company_combo.findText(event["company"])
+        if editing_event:
+            idx = self.company_combo.findText(editing_event["company"])
             if idx >= 0:
                 self.company_combo.setCurrentIndex(idx)
-            idx = self.status_combo.findText(event["status"])
+            idx = self.status_combo.findText(editing_event["status"])
             if idx >= 0:
                 self.status_combo.setCurrentIndex(idx)
-            d = datetime.strptime(event["date"], "%Y-%m-%d").date()
+            d = datetime.strptime(editing_event["date"], "%Y-%m-%d").date()
             self.date_edit.setDate(QDate(d.year, d.month, d.day))
-            self.memo_edit.setText(event.get("memo", ""))
-            for days in event.get("notify_days", []):
+            self.memo_edit.setText(editing_event.get("memo", ""))
+            for days in editing_event.get("notify_days", []):
                 if days in self.notify_checks:
                     self.notify_checks[days].setChecked(True)
 
@@ -411,7 +411,7 @@ class EventDialog(QDialog):
 
         notify_days = [days for days, cb in self.notify_checks.items() if cb.isChecked()]
         record = {
-            "id": self.event["id"] if self.event else self.rdata.next_event_id(),
+            "id": self.editing_event["id"] if self.editing_event else self.rdata.next_event_id(),
             "company": self.company_combo.currentText(),
             "status": self.status_combo.currentText(),
             "date": self.date_edit.date().toString("yyyy-MM-dd"),
@@ -419,9 +419,9 @@ class EventDialog(QDialog):
             "notify_days": notify_days,
         }
 
-        if self.event:
+        if self.editing_event:
             for i, e in enumerate(self.rdata.events):
-                if e["id"] == self.event["id"]:
+                if e["id"] == self.editing_event["id"]:
                     self.rdata.events[i] = record
                     break
         else:
@@ -509,7 +509,7 @@ class DayDetailDialog(QDialog):
             self.on_change()
 
     def edit_event(self, event):
-        dialog = EventDialog(self.rdata, event=event, parent=self)
+        dialog = EventDialog(self.rdata, editing_event=event, parent=self)
         if dialog.exec_() == QDialog.Accepted:
             self.rdata.save()
             self.refresh()
