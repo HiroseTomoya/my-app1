@@ -6,7 +6,7 @@ import calendar
 from datetime import datetime, date, timedelta
 
 from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtGui import QColor, QCursor, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox, QDialog,
@@ -33,6 +33,8 @@ STATUS_COLOR_POOL = [
 STATUS_PRESETS = [
     ("書類選考", "#89B4FA"),
     ("Webテスト", "#74C7EC"),
+    ("動画選考", "#F5C2E7"),
+    ("AI面接", "#B4BEFE"),
     ("GD（グループディスカッション）", "#94E2D5"),
     ("一次面接", "#A6E3A1"),
     ("二次面接", "#F9E2AF"),
@@ -45,21 +47,40 @@ STATUS_PRESETS = [
 # 通知タイミングの選択肢（締切/実施日の何日前に知らせるか）
 NOTIFY_CHOICES = [(3, "3日前"), (1, "前日"), (0, "当日")]
 
+# --- カラーパレット（Catppuccin Mocha ベースの階層構造）---
 COLORS = {
     "bg_base": "#1E1E2E",
+    "bg_mantle": "#181825",
+    "bg_crust": "#11111B",
     "card_bg": "#313244",
+    "surface1": "#45475A",
+    "surface2": "#585B70",
     "border": "#45475A",
+    "overlay": "#6C7086",
     "primary": "#89B4FA",
     "accent": "#CBA6F7",
     "success": "#A6E3A1",
     "danger": "#F38BA8",
+    "warning": "#FAB387",
     "text_main": "#CDD6F4",
     "text_sub": "#A6ADC8",
+    "text_sub2": "#7F849C",
 }
 
 
 def today_str():
     return date.today().isoformat()
+
+
+def clamp(v):
+    return max(0, min(255, v))
+
+
+def adjust_color(hex_color, amount):
+    """16進カラーコードを明るく（正）/暗く（負）調整する"""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"#{clamp(r + amount):02x}{clamp(g + amount):02x}{clamp(b + amount):02x}"
 
 
 class RecruitmentData:
@@ -181,35 +202,128 @@ def color_chip_style(bg_color, border_color=None, text_color="#1E1E2E"):
     return f"""
         background-color: {bg_color};
         border: 3px solid {border};
-        border-radius: 8px;
+        border-radius: 10px;
         color: {text_color};
         font-size: 11px;
         font-weight: 700;
-        padding: 2px 6px;
+        padding: 3px 9px;
     """
 
 
 class StyledButton(QPushButton):
-    def __init__(self, text, base_color, parent=None, compact=False):
+    """角丸・ホバー時に自動で明るくなるボタン。gradient_to を渡すとグラデーション表示になる"""
+
+    def __init__(self, text, base_color, parent=None, compact=False, gradient_to=None):
         super().__init__(text, parent)
         self.setCursor(QCursor(Qt.PointingHandCursor))
-        pad = "8px 16px" if compact else "12px 24px"
-        font_size = "13px" if compact else "15px"
+        pad = "9px 18px" if compact else "13px 26px"
+        font_size = "13px" if compact else "14px"
+        hover_color = adjust_color(base_color, 22)
+        pressed_color = adjust_color(base_color, -18)
+
+        if gradient_to:
+            bg = f"qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {base_color}, stop:1 {gradient_to})"
+            bg_hover = f"qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {hover_color}, stop:1 {adjust_color(gradient_to, 22)})"
+        else:
+            bg = base_color
+            bg_hover = hover_color
+
         self.setStyleSheet(f"""
             QPushButton {{
-                background-color: {base_color};
+                background: {bg};
                 color: #1E1E2E;
                 font-weight: 700;
                 font-size: {font_size};
                 border: none;
-                border-radius: 10px;
+                border-radius: 11px;
                 padding: {pad};
             }}
             QPushButton:hover {{
-                background-color: {base_color};
-                opacity: 0.9;
+                background: {bg_hover};
+            }}
+            QPushButton:pressed {{
+                background: {pressed_color};
+            }}
+            QPushButton:disabled {{
+                background: {COLORS['surface1']};
+                color: {COLORS['text_sub2']};
             }}
         """)
+
+
+class IconButton(QPushButton):
+    """月送りなどに使う円形のアイコンボタン"""
+
+    def __init__(self, text, base_color=None, size=38, parent=None):
+        super().__init__(text, parent)
+        base_color = base_color or COLORS["surface1"]
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setFixedSize(size, size)
+        hover_color = adjust_color(base_color, 25)
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {base_color};
+                color: {COLORS['text_main']};
+                font-size: 16px;
+                font-weight: 700;
+                border: none;
+                border-radius: {size // 2}px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+        """)
+
+
+class OutlineButton(QPushButton):
+    """一覧内の「編集」「削除」など、控えめな枠線だけのボタン"""
+
+    def __init__(self, text, color, parent=None):
+        super().__init__(text, parent)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {color};
+                font-weight: 700;
+                font-size: 12px;
+                border: 2px solid {color};
+                border-radius: 9px;
+                padding: 5px 12px;
+            }}
+            QPushButton:hover {{
+                background-color: {color};
+                color: #1E1E2E;
+            }}
+        """)
+
+
+def section_card(title_text, icon, action_button=None):
+    """右パネルのセクションカード（見出し行＋中身を入れる枠）を作る"""
+    card = QFrame()
+    card.setObjectName("sectionCard")
+    card.setStyleSheet(f"""
+        #sectionCard {{
+            background-color: {COLORS['card_bg']};
+            border: 1px solid {COLORS['surface1']};
+            border-radius: 16px;
+        }}
+    """)
+    outer = QVBoxLayout(card)
+    outer.setContentsMargins(14, 12, 14, 14)
+    outer.setSpacing(8)
+
+    header_row = QHBoxLayout()
+    header_row.setSpacing(6)
+    title_lbl = QLabel(f"{icon}  {title_text}")
+    title_lbl.setStyleSheet(f"font-weight:800; font-size:14px; color:{COLORS['text_main']}; border:none;")
+    header_row.addWidget(title_lbl)
+    header_row.addStretch()
+    if action_button:
+        header_row.addWidget(action_button)
+    outer.addLayout(header_row)
+
+    return card, outer
 
 
 class AddCompanyDialog(QDialog):
@@ -218,21 +332,27 @@ class AddCompanyDialog(QDialog):
     def __init__(self, default_color, parent=None):
         super().__init__(parent)
         self.setWindowTitle("企業を追加")
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(380)
         self.selected_color = default_color
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(26, 26, 26, 26)
         layout.setSpacing(14)
+
+        heading = QLabel("🏢 新しい企業を登録")
+        heading.setStyleSheet(f"font-size:16px; font-weight:800; color:{COLORS['primary']};")
+        layout.addWidget(heading)
 
         layout.addWidget(QLabel("企業名"))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("例: ○○株式会社")
         layout.addWidget(self.name_edit)
 
+        layout.addWidget(QLabel("カレンダー上での企業カラー"))
         color_row = QHBoxLayout()
+        color_row.setSpacing(10)
         self.color_preview = QLabel()
-        self.color_preview.setFixedSize(36, 36)
+        self.color_preview.setFixedSize(40, 40)
         self._refresh_preview()
         color_row.addWidget(self.color_preview)
         pick_btn = StyledButton("色を選ぶ", COLORS["primary"], compact=True)
@@ -242,7 +362,8 @@ class AddCompanyDialog(QDialog):
         layout.addLayout(color_row)
 
         btn_row = QHBoxLayout()
-        cancel_btn = StyledButton("キャンセル", COLORS["border"], compact=True)
+        btn_row.setSpacing(10)
+        cancel_btn = StyledButton("キャンセル", COLORS["surface2"], compact=True)
         cancel_btn.clicked.connect(self.reject)
         ok_btn = StyledButton("追加する", COLORS["success"], compact=True)
         ok_btn.clicked.connect(self.accept)
@@ -252,7 +373,7 @@ class AddCompanyDialog(QDialog):
 
     def _refresh_preview(self):
         self.color_preview.setStyleSheet(
-            f"background-color:{self.selected_color}; border-radius:8px; border:1px solid #45475A;"
+            f"background-color:{self.selected_color}; border-radius:10px; border:2px solid {COLORS['surface1']};"
         )
 
     def pick_color(self):
@@ -271,11 +392,15 @@ class AddStatusDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("選考状況を追加")
-        self.setMinimumWidth(340)
+        self.setMinimumWidth(360)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(26, 26, 26, 26)
         layout.setSpacing(14)
+
+        heading = QLabel("🏷️ 新しい選考状況を追加")
+        heading.setStyleSheet(f"font-size:16px; font-weight:800; color:{COLORS['accent']};")
+        layout.addWidget(heading)
 
         layout.addWidget(QLabel("選考状況名（色は自動で割り当てられます）"))
         self.name_edit = QLineEdit()
@@ -283,7 +408,8 @@ class AddStatusDialog(QDialog):
         layout.addWidget(self.name_edit)
 
         btn_row = QHBoxLayout()
-        cancel_btn = StyledButton("キャンセル", COLORS["border"], compact=True)
+        btn_row.setSpacing(10)
+        cancel_btn = StyledButton("キャンセル", COLORS["surface2"], compact=True)
         cancel_btn.clicked.connect(self.reject)
         ok_btn = StyledButton("追加する", COLORS["success"], compact=True)
         ok_btn.clicked.connect(self.accept)
@@ -303,11 +429,15 @@ class EventDialog(QDialog):
         self.rdata = rdata
         self.editing_event = editing_event
         self.setWindowTitle("予定を編集" if editing_event else "予定を追加")
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(400)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        layout.setContentsMargins(26, 26, 26, 26)
+        layout.setSpacing(10)
+
+        heading = QLabel("✏️ 予定を編集" if editing_event else "📌 新しい予定を追加")
+        heading.setStyleSheet(f"font-size:17px; font-weight:800; color:{COLORS['primary']}; margin-bottom:4px;")
+        layout.addWidget(heading)
 
         layout.addWidget(QLabel("企業"))
         company_row = QHBoxLayout()
@@ -344,10 +474,12 @@ class EventDialog(QDialog):
             cb = QCheckBox(label)
             self.notify_checks[days] = cb
             notify_row.addWidget(cb)
+        notify_row.addStretch()
         layout.addLayout(notify_row)
 
         btn_row = QHBoxLayout()
-        cancel_btn = StyledButton("キャンセル", COLORS["border"], compact=True)
+        btn_row.setSpacing(10)
+        cancel_btn = StyledButton("キャンセル", COLORS["surface2"], compact=True)
         cancel_btn.clicked.connect(self.reject)
         save_btn = StyledButton("保存する", COLORS["success"], compact=True)
         save_btn.clicked.connect(self.on_save)
@@ -447,20 +579,25 @@ class DayDetailDialog(QDialog):
         self.day = day
         self.on_change = on_change
         self.setWindowTitle(f"{day.strftime('%Y年%m月%d日')} の予定")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(440)
 
         self.layout_main = QVBoxLayout(self)
-        self.layout_main.setContentsMargins(20, 20, 20, 20)
-        self.layout_main.setSpacing(10)
+        self.layout_main.setContentsMargins(24, 24, 24, 24)
+        self.layout_main.setSpacing(12)
+
+        heading = QLabel(f"🗓️ {day.strftime('%Y年%m月%d日')} の予定")
+        heading.setStyleSheet(f"font-size:17px; font-weight:800; color:{COLORS['primary']};")
+        self.layout_main.addWidget(heading)
 
         self.list_area = QVBoxLayout()
+        self.list_area.setSpacing(8)
         self.layout_main.addLayout(self.list_area)
 
-        add_btn = StyledButton("＋この日に予定を追加", COLORS["accent"])
+        add_btn = StyledButton("＋ この日に予定を追加", COLORS["accent"], gradient_to=COLORS["primary"])
         add_btn.clicked.connect(self.add_event)
         self.layout_main.addWidget(add_btn)
 
-        close_btn = StyledButton("閉じる", COLORS["border"], compact=True)
+        close_btn = StyledButton("閉じる", COLORS["surface2"], compact=True)
         close_btn.clicked.connect(self.accept)
         self.layout_main.addWidget(close_btn)
 
@@ -475,17 +612,18 @@ class DayDetailDialog(QDialog):
         events = self.rdata.events_on(self.day.isoformat())
         if not events:
             empty = QLabel("この日の予定はまだありません。")
-            empty.setStyleSheet(f"color:{COLORS['text_sub']};")
+            empty.setStyleSheet(f"color:{COLORS['text_sub']}; padding:6px 2px;")
             self.list_area.addWidget(empty)
             return
 
         for e in events:
             row = QFrame()
             row.setStyleSheet(
-                f"background-color:{COLORS['card_bg']}; border-radius:10px; border:1px solid {COLORS['border']};"
+                f"background-color:{COLORS['bg_base']}; border-radius:12px; border:1px solid {COLORS['surface1']};"
             )
             row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(12, 8, 12, 8)
+            row_layout.setContentsMargins(14, 10, 10, 10)
+            row_layout.setSpacing(10)
 
             company_color = self.rdata.companies.get(e["company"], COLORS["border"])
             status_color = self.rdata.status_color(e["status"])
@@ -494,16 +632,14 @@ class DayDetailDialog(QDialog):
             row_layout.addWidget(chip)
 
             memo_lbl = QLabel(e.get("memo", ""))
-            memo_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px;")
+            memo_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
             row_layout.addWidget(memo_lbl, stretch=1)
 
-            edit_btn = QPushButton("編集")
-            edit_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            edit_btn = OutlineButton("✏️ 編集", COLORS["primary"])
             edit_btn.clicked.connect(lambda checked=False, ev=e: self.edit_event(ev))
             row_layout.addWidget(edit_btn)
 
-            del_btn = QPushButton("削除")
-            del_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            del_btn = OutlineButton("🗑 削除", COLORS["danger"])
             del_btn.clicked.connect(lambda checked=False, ev=e: self.delete_event(ev))
             row_layout.addWidget(del_btn)
 
@@ -539,7 +675,7 @@ class RecruitmentCalendarWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("就活選考カレンダー")
-        self.resize(1100, 720)
+        self.resize(1180, 760)
         self.rdata = RecruitmentData()
 
         today = date.today()
@@ -553,109 +689,158 @@ class RecruitmentCalendarWindow(QMainWindow):
 
     def init_style(self):
         self.setStyleSheet(f"""
-            QMainWindow {{ background-color: {COLORS['bg_base']}; }}
+            QMainWindow, QDialog {{ background-color: {COLORS['bg_mantle']}; }}
+            QWidget {{ font-family: 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif; }}
             QLabel {{ color: {COLORS['text_main']}; font-size: 13px; }}
             QLineEdit, QComboBox, QDateEdit {{
-                background-color: {COLORS['card_bg']};
+                background-color: {COLORS['bg_base']};
                 color: {COLORS['text_main']};
-                border: 2px solid {COLORS['border']};
-                border-radius: 8px;
-                padding: 6px 10px;
+                border: 2px solid {COLORS['surface1']};
+                border-radius: 10px;
+                padding: 8px 12px;
                 min-height: 22px;
+                font-size: 13px;
             }}
             QLineEdit:focus, QComboBox:focus, QDateEdit:focus {{
                 border: 2px solid {COLORS['primary']};
             }}
+            QComboBox QAbstractItemView {{
+                background-color: {COLORS['card_bg']};
+                color: {COLORS['text_main']};
+                selection-background-color: {COLORS['surface1']};
+                border: 1px solid {COLORS['surface1']};
+                outline: none;
+            }}
+            QCheckBox {{ color: {COLORS['text_main']}; font-size: 13px; spacing: 6px; }}
+            QCheckBox::indicator {{
+                width: 18px; height: 18px;
+                border-radius: 5px;
+                border: 2px solid {COLORS['surface2']};
+                background: {COLORS['bg_base']};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {COLORS['accent']};
+                border: 2px solid {COLORS['accent']};
+            }}
             QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 10px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {COLORS['surface2']};
+                border-radius: 5px;
+                min-height: 24px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0;
+            }}
+            QMessageBox {{ background-color: {COLORS['bg_mantle']}; }}
+            QMessageBox QLabel {{ color: {COLORS['text_main']}; font-size: 13px; }}
+            QMessageBox QPushButton {{
+                background-color: {COLORS['primary']};
+                color: #1E1E2E;
+                min-width: 90px;
+                min-height: 34px;
+                border-radius: 9px;
+                font-weight: 700;
+                border: none;
+            }}
         """)
 
     def init_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
         outer = QHBoxLayout(central)
-        outer.setContentsMargins(16, 16, 16, 16)
-        outer.setSpacing(16)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(18)
 
         # --- 中央: カレンダー ---
         center = QVBoxLayout()
+        center.setSpacing(14)
         outer.addLayout(center, stretch=3)
 
         header = QHBoxLayout()
-        title = QLabel("就活選考カレンダー")
-        title.setStyleSheet(f"font-size:22px; font-weight:800; color:{COLORS['primary']};")
-        header.addWidget(title)
+        header.setSpacing(4)
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title = QLabel("🗓️ 就活選考カレンダー")
+        title.setStyleSheet(f"font-size:24px; font-weight:800; color:{COLORS['text_main']};")
+        subtitle = QLabel("企業カラー × 選考状況の枠色で、選考の進み具合をひと目で把握")
+        subtitle.setStyleSheet(f"font-size:12px; color:{COLORS['text_sub']};")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box)
         header.addStretch()
-        add_btn = StyledButton("＋ 予定を追加", COLORS["accent"])
+        add_btn = StyledButton("＋ 予定を追加", COLORS["accent"], gradient_to=COLORS["primary"])
         add_btn.clicked.connect(self.open_add_event_from_header)
         header.addWidget(add_btn)
         center.addLayout(header)
 
-        nav_row = QHBoxLayout()
-        prev_btn = StyledButton("◀ 前月", COLORS["primary"], compact=True)
+        nav_card = QFrame()
+        nav_card.setStyleSheet(f"""
+            background-color:{COLORS['card_bg']};
+            border:1px solid {COLORS['surface1']};
+            border-radius:14px;
+        """)
+        nav_row = QHBoxLayout(nav_card)
+        nav_row.setContentsMargins(10, 8, 10, 8)
+        prev_btn = IconButton("‹", COLORS["surface1"])
         prev_btn.clicked.connect(self.prev_month)
         self.month_label = QLabel()
         self.month_label.setAlignment(Qt.AlignCenter)
-        self.month_label.setStyleSheet("font-size:17px; font-weight:700;")
-        next_btn = StyledButton("次月 ▶", COLORS["primary"], compact=True)
+        self.month_label.setStyleSheet(f"font-size:18px; font-weight:800; color:{COLORS['text_main']};")
+        next_btn = IconButton("›", COLORS["surface1"])
         next_btn.clicked.connect(self.next_month)
+        today_btn = StyledButton("今日", COLORS["surface2"], compact=True)
+        today_btn.clicked.connect(self.go_today)
         nav_row.addWidget(prev_btn)
         nav_row.addWidget(self.month_label, stretch=1)
         nav_row.addWidget(next_btn)
-        center.addLayout(nav_row)
+        nav_row.addSpacing(8)
+        nav_row.addWidget(today_btn)
+        center.addWidget(nav_card)
 
         self.calendar_grid = QGridLayout()
-        self.calendar_grid.setSpacing(6)
+        self.calendar_grid.setSpacing(8)
         calendar_card = QFrame()
-        calendar_card.setStyleSheet(
-            f"background-color:{COLORS['card_bg']}; border-radius:14px; border:1px solid {COLORS['border']};"
-        )
-        calendar_card.setLayout(self.calendar_grid)
+        calendar_card.setStyleSheet(f"""
+            background-color:{COLORS['card_bg']};
+            border-radius:18px;
+            border:1px solid {COLORS['surface1']};
+        """)
+        calendar_card_layout = QVBoxLayout(calendar_card)
+        calendar_card_layout.setContentsMargins(14, 14, 14, 14)
+        calendar_card_layout.addLayout(self.calendar_grid)
         center.addWidget(calendar_card, stretch=1)
 
         # --- 右パネル: 通知 / 企業 / 選考状況 ---
-        right = QVBoxLayout()
-        outer.addLayout(right, stretch=1)
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFixedWidth(320)
+        right_container = QWidget()
+        right = QVBoxLayout(right_container)
+        right.setContentsMargins(0, 0, 4, 0)
+        right.setSpacing(14)
+        right_scroll.setWidget(right_container)
+        outer.addWidget(right_scroll)
 
-        notify_title = QLabel("直近7日以内の締切・予定")
-        notify_title.setStyleSheet("font-weight:800; font-size:14px;")
-        right.addWidget(notify_title)
-        self.notify_scroll = QScrollArea()
-        self.notify_scroll.setWidgetResizable(True)
-        self.notify_scroll.setFixedHeight(200)
-        self.notify_container = QWidget()
-        self.notify_layout = QVBoxLayout(self.notify_container)
-        self.notify_layout.setAlignment(Qt.AlignTop)
-        self.notify_scroll.setWidget(self.notify_container)
-        right.addWidget(self.notify_scroll)
+        notify_card, self.notify_layout = section_card("直近7日の締切・予定", "🔔")
+        self.notify_layout.setSpacing(6)
+        right.addWidget(notify_card)
 
-        company_header = QHBoxLayout()
-        company_title = QLabel("登録済みの企業")
-        company_title.setStyleSheet("font-weight:800; font-size:14px; margin-top:8px;")
-        company_header.addWidget(company_title)
-        company_header.addStretch()
         add_company_btn = StyledButton("＋ 企業を追加", COLORS["accent"], compact=True)
         add_company_btn.clicked.connect(self.open_add_company_standalone)
-        company_header.addWidget(add_company_btn)
-        right.addLayout(company_header)
-        self.company_scroll = QScrollArea()
-        self.company_scroll.setWidgetResizable(True)
-        self.company_scroll.setFixedHeight(160)
-        self.company_container = QWidget()
-        self.company_layout = QVBoxLayout(self.company_container)
-        self.company_layout.setAlignment(Qt.AlignTop)
-        self.company_scroll.setWidget(self.company_container)
-        right.addWidget(self.company_scroll)
+        company_card, self.company_layout = section_card("登録済みの企業", "🏢", action_button=add_company_btn)
+        self.company_layout.setSpacing(6)
+        right.addWidget(company_card)
 
-        status_title = QLabel("選考状況の一覧")
-        status_title.setStyleSheet("font-weight:800; font-size:14px; margin-top:8px;")
-        right.addWidget(status_title)
-        self.status_scroll = QScrollArea()
-        self.status_scroll.setWidgetResizable(True)
-        self.status_container = QWidget()
-        self.status_layout = QVBoxLayout(self.status_container)
-        self.status_layout.setAlignment(Qt.AlignTop)
-        self.status_scroll.setWidget(self.status_container)
-        right.addWidget(self.status_scroll, stretch=1)
+        status_card, self.status_layout = section_card("選考状況の一覧", "🏷️")
+        self.status_layout.setSpacing(6)
+        right.addWidget(status_card)
+
+        right.addStretch()
 
     # --- カレンダー描画 ---
     def draw_calendar(self):
@@ -667,11 +852,11 @@ class RecruitmentCalendarWindow(QMainWindow):
                 child.widget().deleteLater()
 
         weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-        weekday_colors = [COLORS["text_sub"]] * 5 + ["#74C7EC", "#F38BA8"]
+        weekday_colors = [COLORS["text_sub"]] * 5 + [COLORS["primary"], COLORS["danger"]]
         for i, wd in enumerate(weekdays):
             lbl = QLabel(wd)
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(f"font-weight:700; color:{weekday_colors[i]};")
+            lbl.setStyleSheet(f"font-weight:800; font-size:12px; color:{weekday_colors[i]}; padding:4px 0;")
             self.calendar_grid.addWidget(lbl, 0, i)
 
         weeks = calendar.monthcalendar(self.cur_year, self.cur_month)
@@ -685,20 +870,35 @@ class RecruitmentCalendarWindow(QMainWindow):
                 is_today = (cell_date == today)
 
                 cell = QFrame()
-                cell.setMinimumSize(130, 90)
+                cell.setMinimumSize(140, 96)
                 cell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                border_color = COLORS["primary"] if is_today else COLORS["border"]
-                cell.setStyleSheet(
-                    f"background-color:{COLORS['bg_base']}; border:2px solid {border_color}; border-radius:10px;"
-                )
+                if is_today:
+                    bg = f"rgba(137, 180, 250, 0.16)"
+                    border_color = COLORS["primary"]
+                    border_width = 2
+                else:
+                    bg = COLORS["bg_base"]
+                    border_color = COLORS["surface1"]
+                    border_width = 1
+                cell.setStyleSheet(f"""
+                    QFrame {{
+                        background-color: {bg};
+                        border: {border_width}px solid {border_color};
+                        border-radius: 12px;
+                    }}
+                    QFrame:hover {{
+                        border: {border_width}px solid {COLORS['primary']};
+                    }}
+                """)
                 cell.setCursor(QCursor(Qt.PointingHandCursor))
                 cell_layout = QVBoxLayout(cell)
-                cell_layout.setContentsMargins(6, 4, 6, 4)
-                cell_layout.setSpacing(2)
+                cell_layout.setContentsMargins(8, 6, 8, 6)
+                cell_layout.setSpacing(3)
 
                 day_lbl = QLabel(str(day_num))
                 day_lbl.setStyleSheet(
-                    f"font-weight:800; color:{COLORS['primary'] if is_today else COLORS['text_main']}; border:none;"
+                    f"font-weight:800; font-size:13px; "
+                    f"color:{COLORS['primary'] if is_today else COLORS['text_main']}; border:none; background:transparent;"
                 )
                 cell_layout.addWidget(day_lbl)
 
@@ -706,12 +906,14 @@ class RecruitmentCalendarWindow(QMainWindow):
                 for e in day_events[:3]:
                     company_color = self.rdata.companies.get(e["company"], COLORS["border"])
                     status_color = self.rdata.status_color(e["status"])
-                    chip = QLabel(e["company"])
+                    chip = QLabel()
+                    metrics = QFontMetrics(chip.font())
+                    chip.setText(metrics.elidedText(e["company"], Qt.ElideRight, 96))
                     chip.setStyleSheet(color_chip_style(company_color, status_color))
                     cell_layout.addWidget(chip)
                 if len(day_events) > 3:
                     more_lbl = QLabel(f"+{len(day_events) - 3}件")
-                    more_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:11px; border:none;")
+                    more_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:11px; border:none; background:transparent;")
                     cell_layout.addWidget(more_lbl)
 
                 cell_layout.addStretch()
@@ -739,6 +941,11 @@ class RecruitmentCalendarWindow(QMainWindow):
         self.draw_calendar()
         self.refresh_side_panels()
 
+    def go_today(self):
+        today = date.today()
+        self.cur_year, self.cur_month = today.year, today.month
+        self.draw_calendar()
+
     def prev_month(self):
         if self.cur_month == 1:
             self.cur_month = 12
@@ -757,46 +964,48 @@ class RecruitmentCalendarWindow(QMainWindow):
 
     # --- 右パネル描画 ---
     def refresh_side_panels(self):
-        self._clear_layout(self.notify_layout)
+        self._clear_layout(self.notify_layout, keep_first=1)
         upcoming = self.rdata.upcoming_events(within_days=7)
         if not upcoming:
             lbl = QLabel("直近の締切・予定はありません。")
-            lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px;")
+            lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
             self.notify_layout.addWidget(lbl)
         for days_left, e in upcoming:
             when = "本日" if days_left == 0 else f"あと{days_left}日"
+            badge_color = COLORS["danger"] if days_left == 0 else (COLORS["warning"] if days_left <= 1 else COLORS["primary"])
             lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{e['date']}）")
-            company_color = self.rdata.companies.get(e["company"], COLORS["border"])
             status_color = self.rdata.status_color(e["status"])
+            lbl.setWordWrap(True)
             lbl.setStyleSheet(
-                f"background-color:{COLORS['card_bg']}; border-left:6px solid {status_color}; "
-                f"border-radius:6px; padding:6px 8px; margin-bottom:4px; color:{company_color};"
+                f"background-color:{COLORS['bg_base']}; border-left:5px solid {status_color}; "
+                f"border-radius:8px; padding:7px 10px; color:{badge_color}; font-size:12px; font-weight:600;"
             )
             self.notify_layout.addWidget(lbl)
 
-        self._clear_layout(self.company_layout)
+        self._clear_layout(self.company_layout, keep_first=1)
         if not self.rdata.companies:
             lbl = QLabel("まだ企業が登録されていません。")
-            lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px;")
+            lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
             self.company_layout.addWidget(lbl)
         for name, color in self.rdata.companies.items():
             lbl = QLabel(name)
-            lbl.setStyleSheet(color_chip_style(color) + "margin-bottom:4px;")
+            lbl.setStyleSheet(color_chip_style(color) + "border-radius:20px;")
             self.company_layout.addWidget(lbl)
 
-        self._clear_layout(self.status_layout)
+        self._clear_layout(self.status_layout, keep_first=1)
         for s in self.rdata.statuses:
-            preset_mark = "" if s.get("preset") else "（追加）"
+            preset_mark = "" if s.get("preset") else " ・追加"
             lbl = QLabel(f"{s['name']}{preset_mark}")
             lbl.setStyleSheet(
-                f"border:3px solid {s['color']}; border-radius:6px; padding:4px 8px; margin-bottom:4px;"
+                f"border:3px solid {s['color']}; border-radius:20px; padding:4px 10px; "
+                f"font-size:11px; font-weight:700; color:{COLORS['text_main']}; background:transparent;"
             )
             self.status_layout.addWidget(lbl)
 
     @staticmethod
-    def _clear_layout(layout):
-        while layout.count():
-            child = layout.takeAt(0)
+    def _clear_layout(layout, keep_first=0):
+        while layout.count() > keep_first:
+            child = layout.takeAt(keep_first)
             if child.widget():
                 child.widget().deleteLater()
 
