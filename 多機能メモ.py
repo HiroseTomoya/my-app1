@@ -12,7 +12,8 @@ from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
-    QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout, QCheckBox
+    QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout, QCheckBox,
+    QSplitter, QSizePolicy
 )
 from PySide6.QtGui import QFont, QCursor
 
@@ -697,11 +698,19 @@ class MultiApp(QMainWindow):
         tab_row_layout.addWidget(ref_select_btn)
         layout.addWidget(tab_row)
 
-        # メイン領域: 左にエディタ、右に参照メモパネル
-        content_row = QHBoxLayout()
-        content_row.setSpacing(10)
+        # メイン領域: 左にエディタ、右に参照メモパネル（境界をドラッグして幅を調整できる）
+        content_splitter = QSplitter(Qt.Horizontal)
+        content_splitter.setHandleWidth(10)
+        content_splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background-color: #D4D8E3;
+                border-radius: 4px;
+            }}
+        """)
 
-        editor_col = QVBoxLayout()
+        editor_widget = QWidget()
+        editor_col = QVBoxLayout(editor_widget)
+        editor_col.setContentsMargins(0, 0, 0, 0)
         editor_col.setSpacing(10)
 
         # テキストエリア（メイン領域、最大限広く）
@@ -734,11 +743,11 @@ class MultiApp(QMainWindow):
         bottom_layout.addWidget(hint_lbl)
 
         editor_col.addWidget(bottom_bar)
-        content_row.addLayout(editor_col, stretch=2)
+        content_splitter.addWidget(editor_widget)
 
         # 参照パネル: 選択した他のメモを読み取り専用で並べて表示
         ref_panel = QWidget()
-        ref_panel.setFixedWidth(320)
+        ref_panel.setMinimumWidth(320)
         ref_panel_layout = QVBoxLayout(ref_panel)
         ref_panel_layout.setContentsMargins(0, 0, 0, 0)
         ref_panel_layout.setSpacing(8)
@@ -757,8 +766,11 @@ class MultiApp(QMainWindow):
         ref_scroll.setWidget(ref_container)
         ref_panel_layout.addWidget(ref_scroll, stretch=1)
 
-        content_row.addWidget(ref_panel, stretch=1)
-        layout.addLayout(content_row, stretch=1)
+        content_splitter.addWidget(ref_panel)
+        content_splitter.setStretchFactor(0, 1)
+        content_splitter.setStretchFactor(1, 1)
+        content_splitter.setSizes([560, 560])
+        layout.addWidget(content_splitter, stretch=1)
 
         self.stacked_widget.addWidget(screen)
         self.screens["memo"] = screen
@@ -906,21 +918,22 @@ class MultiApp(QMainWindow):
             content = QTextEdit()
             content.setPlainText(self.memo_data.get(name, ""))
             content.setReadOnly(True)
-            content.setFixedHeight(160)
+            content.setMinimumHeight(320)
+            content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             content.setStyleSheet(f"""
                 QTextEdit {{
                     background-color: {self.colors['bg_surface']};
-                    color: {self.colors['text_sub']};
+                    color: {self.colors['text_main']};
                     border: 1px solid #D4D8E3;
                     border-radius: 8px;
-                    padding: 8px;
-                    font-size: 13px;
+                    padding: 10px;
+                    font-size: 15px;
+                    line-height: 1.6;
                 }}
             """)
             card_layout.addWidget(content)
 
             self.reference_layout.addWidget(card)
-            self.load_current_memo_text()
 
 
     # --- 3. セキュリティ強化メモ (Vault) ---
