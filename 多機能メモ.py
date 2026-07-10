@@ -8,7 +8,7 @@ from datetime import datetime
 import calendar #カレンダー機能をモジュール
 
 # PySide6 モジュールのインポート
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
@@ -206,6 +206,11 @@ class MultiApp(QMainWindow):
         self.setCentralWidget(self.stacked_widget)
 
         self.timer_worker = None
+
+        # メモ入力後、少し間が空いたら自動でディスクに保存するためのタイマー
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.timeout.connect(self.save_all_data)
 
         # 全ての画面レイアウトをはじめに構築して固定配置（バグの根本原因の修正）
         self.screens = {}
@@ -810,6 +815,7 @@ class MultiApp(QMainWindow):
     def save_memo_content(self):
         if hasattr(self, 'memo_text_widget'):
             self.memo_data[self.current_memo_folder] = self.memo_text_widget.toPlainText()
+            self.autosave_timer.start(800)
 
     def add_folder(self):
         dialog = StyledInputDialog("新しいフォルダ", "フォルダ名を入力してください", parent=self)
