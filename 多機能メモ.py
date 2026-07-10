@@ -94,8 +94,8 @@ class StyledInputDialog(QDialog):
         self.setMinimumWidth(420)
         self.setStyleSheet("""
             QDialog {
-                background-color: #1E1E2E;
-                border: 1px solid #313244;
+                background-color: #F4F6FB;
+                border: 1px solid #D4D8E3;
             }
         """)
         self.setWindowModality(Qt.WindowModal)
@@ -106,7 +106,7 @@ class StyledInputDialog(QDialog):
 
         lbl = QLabel(prompt)
         lbl.setStyleSheet("""
-            color: #CDD6F4;
+            color: #3B3F51;
             font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
             font-size: 16px;
             font-weight: 600;
@@ -119,24 +119,24 @@ class StyledInputDialog(QDialog):
         self.entry.setText(initial_value)
         self.entry.setStyleSheet("""
             QLineEdit {
-                background-color: #313244;
-                color: #CDD6F4;
+                background-color: #F4F6FB;
+                color: #3B3F51;
                 font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
                 font-size: 16px;
-                border: 2px solid #45475A;
+                border: 2px solid #D4D8E3;
                 border-radius: 12px;
                 padding: 14px 18px;
                 min-height: 22px;
             }
             QLineEdit:focus {
-                border: 2px solid #89B4FA;
+                border: 2px solid #1E66F5;
             }
         """)
         if is_password:
             self.entry.setEchoMode(QLineEdit.Password)
         layout.addWidget(self.entry)
 
-        btn = StyledButton("決定", "#89B4FA")
+        btn = StyledButton("決定", "#1E66F5")
         btn.setFixedHeight(50)
         btn.clicked.connect(self.accept)
         layout.addWidget(btn)
@@ -153,8 +153,8 @@ class ReferenceSelectDialog(QDialog):
         self.setMinimumWidth(360)
         self.setStyleSheet("""
             QDialog {
-                background-color: #1E1E2E;
-                border: 1px solid #313244;
+                background-color: #F4F6FB;
+                border: 1px solid #D4D8E3;
             }
         """)
         self.setWindowModality(Qt.WindowModal)
@@ -164,7 +164,7 @@ class ReferenceSelectDialog(QDialog):
         layout.setSpacing(14)
 
         lbl = QLabel("参照しながら書きたいメモにチェックしてください")
-        lbl.setStyleSheet("color: #CDD6F4; font-size: 15px; font-weight: 600;")
+        lbl.setStyleSheet("color: #3B3F51; font-size: 15px; font-weight: 600;")
         lbl.setWordWrap(True)
         layout.addWidget(lbl)
 
@@ -173,11 +173,11 @@ class ReferenceSelectDialog(QDialog):
             label = f"{name}（編集中）" if name == current_name else name
             cb = QCheckBox(label)
             cb.setChecked(name in checked_names)
-            cb.setStyleSheet("color: #CDD6F4; font-size: 14px; padding: 4px 0;")
+            cb.setStyleSheet("color: #3B3F51; font-size: 14px; padding: 4px 0;")
             layout.addWidget(cb)
             self.checkboxes[name] = cb
 
-        btn = StyledButton("決定", "#89B4FA")
+        btn = StyledButton("決定", "#1E66F5")
         btn.setFixedHeight(48)
         btn.clicked.connect(self.accept)
         layout.addWidget(btn)
@@ -218,19 +218,19 @@ class MultiApp(QMainWindow):
 
     def init_style(self):
         self.colors = {
-            "bg_base": "#1E1E2E",
-            "bg_surface": "#181825",
-            "card_bg": "#313244",
-            "primary": "#89B4FA",
-            "accent": "#CBA6F7",
-            "success": "#A6E3A1",
-            "danger": "#F38BA8",
-            "neutral": "#9399B2",
-            "text_main": "#CDD6F4",
-            "text_sub": "#A6ADC8",
-            "tab_active": "#89B4FA",
-            "tab_inactive": "#45475A",
-            "btn_back": "#585B70"
+            "bg_base": "#F4F6FB",
+            "bg_surface": "#E9ECF3",
+            "card_bg": "#FFFFFF",
+            "primary": "#1E66F5",
+            "accent": "#8839EF",
+            "success": "#3FA34D",
+            "danger": "#D20F39",
+            "neutral": "#8C90A4",
+            "text_main": "#3B3F51",
+            "text_sub": "#6C7086",
+            "tab_active": "#1E66F5",
+            "tab_inactive": "#D4D8E3",
+            "btn_back": "#6C7086"
         }
         self.setStyleSheet(f"""
             * {{
@@ -249,10 +249,10 @@ class MultiApp(QMainWindow):
                 color: {self.colors['text_main']};
                 font-size: 16px;
                 line-height: 1.7;
-                border: 2px solid #45475A;
+                border: 2px solid #D4D8E3;
                 border-radius: 14px;
                 padding: 18px;
-                selection-background-color: #45475A;
+                selection-background-color: #D4D8E3;
             }}
             QTextEdit:focus {{
                 border: 2px solid {self.colors['primary']};
@@ -261,7 +261,7 @@ class MultiApp(QMainWindow):
                 background-color: {self.colors['card_bg']};
                 color: {self.colors['text_main']};
                 font-size: 15px;
-                border: 2px solid #45475A;
+                border: 2px solid #D4D8E3;
                 border-radius: 12px;
                 padding: 12px 16px;
                 min-height: 24px;
@@ -276,7 +276,7 @@ class MultiApp(QMainWindow):
             QComboBox {{
                 font-size: 15px;
                 padding: 10px 14px;
-                border: 2px solid #45475A;
+                border: 2px solid #D4D8E3;
                 border-radius: 12px;
                 background: {self.colors['card_bg']};
                 color: {self.colors['text_main']};
@@ -289,7 +289,7 @@ class MultiApp(QMainWindow):
             QComboBox QAbstractItemView {{
                 background-color: {self.colors['card_bg']};
                 color: {self.colors['text_main']};
-                selection-background-color: #45475A;
+                selection-background-color: #D4D8E3;
             }}
             QMessageBox {{
                 background-color: {self.colors['bg_base']};
@@ -451,12 +451,12 @@ class MultiApp(QMainWindow):
                     color: {color};
                     font-size: 24px;
                     font-weight: 700;
-                    border: 2px solid #45475A;
+                    border: 2px solid #D4D8E3;
                     border-radius: 22px;
                     padding: 24px;
                 }}
                 QPushButton:hover {{
-                    background-color: #45475A;
+                    background-color: #D4D8E3;
                     border-color: {color};
                 }}
             """)
@@ -531,7 +531,7 @@ class MultiApp(QMainWindow):
                 font-family: 'Consolas', monospace;
                 font-size: 24px;
                 font-weight: 600;
-                border: 2px solid #45475A;
+                border: 2px solid #D4D8E3;
                 border-radius: 12px;
                 background: {self.colors['card_bg']};
                 color: {self.colors['text_main']};
@@ -573,7 +573,7 @@ class MultiApp(QMainWindow):
             QWidget {{
                 background-color: {self.colors['card_bg']};
                 border-radius: 16px;
-                border: 1px solid #45475A;
+                border: 1px solid #D4D8E3;
             }}
         """)
         btn_layout = QHBoxLayout(btn_bar)
@@ -717,7 +717,7 @@ class MultiApp(QMainWindow):
             QWidget {{
                 background-color: {self.colors['card_bg']};
                 border-radius: 12px;
-                border: 1px solid #45475A;
+                border: 1px solid #D4D8E3;
             }}
         """)
         bottom_layout = QHBoxLayout(bottom_bar)
@@ -789,7 +789,7 @@ class MultiApp(QMainWindow):
                     border: none;
                 }}
                 QPushButton:hover {{
-                    background-color: {'#45475A' if not is_active else bg};
+                    background-color: {'#D4D8E3' if not is_active else bg};
                 }}
             """)
             btn.clicked.connect(lambda checked=False, n=name: self.change_folder(n))
@@ -892,7 +892,7 @@ class MultiApp(QMainWindow):
                 QWidget {{
                     background-color: {self.colors['card_bg']};
                     border-radius: 12px;
-                    border: 1px solid #45475A;
+                    border: 1px solid #D4D8E3;
                 }}
             """)
             card_layout = QVBoxLayout(card)
@@ -911,7 +911,7 @@ class MultiApp(QMainWindow):
                 QTextEdit {{
                     background-color: {self.colors['bg_surface']};
                     color: {self.colors['text_sub']};
-                    border: 1px solid #45475A;
+                    border: 1px solid #D4D8E3;
                     border-radius: 8px;
                     padding: 8px;
                     font-size: 13px;
@@ -983,7 +983,7 @@ class MultiApp(QMainWindow):
         auth_card.setStyleSheet(f"""
             background-color: {self.colors['card_bg']};
             border-radius: 16px;
-            border: 1px solid #45475A;
+            border: 1px solid #D4D8E3;
         """)
         auth_card.setMaximumWidth(420)
         auth_card.setMinimumWidth(300)
@@ -1114,7 +1114,7 @@ class MultiApp(QMainWindow):
                 QWidget {{
                     background-color: {self.colors['card_bg']};
                     border-radius: 12px;
-                    border: 1px solid #45475A;
+                    border: 1px solid #D4D8E3;
                 }}
             """)
             row.setMinimumHeight(56)
@@ -1241,7 +1241,7 @@ class MultiApp(QMainWindow):
                 QWidget {{
                     background-color: {self.colors['card_bg']};
                     border-radius: 12px;
-                    border: 1px solid #45475A;
+                    border: 1px solid #D4D8E3;
                 }}
             """)
             row.setFixedHeight(58)
@@ -1295,7 +1295,7 @@ class MultiApp(QMainWindow):
             QWidget {{
                 background-color: {self.colors['card_bg']};
                 border-radius: 12px;
-                border: 1px solid #45475A;
+                border: 1px solid #D4D8E3;
             }}
         """)
         ctrl_layout = QHBoxLayout(ctrl_f)
@@ -1314,7 +1314,7 @@ class MultiApp(QMainWindow):
                 padding: 8px 16px;
                 border-radius: 8px;
             }}
-            QPushButton:hover {{ background: #45475A; }}
+            QPushButton:hover {{ background: #D4D8E3; }}
         """)
         prev_btn.clicked.connect(self.prev_month)
 
@@ -1340,7 +1340,7 @@ class MultiApp(QMainWindow):
                 padding: 8px 16px;
                 border-radius: 8px;
             }}
-            QPushButton:hover {{ background: #45475A; }}
+            QPushButton:hover {{ background: #D4D8E3; }}
         """)
         next_btn.clicked.connect(self.next_month)
 
@@ -1356,7 +1356,7 @@ class MultiApp(QMainWindow):
         card.setStyleSheet(f"""
             background-color: {self.colors['card_bg']};
             border-radius: 14px;
-            border: 1px solid #45475A;
+            border: 1px solid #D4D8E3;
             padding: 14px;
         """)
         self.calendar_grid_layout = QGridLayout(card)
@@ -1376,7 +1376,7 @@ class MultiApp(QMainWindow):
                 child.widget().deleteLater()
 
         days = ["月", "火", "水", "木", "金", "土", "日"]
-        day_colors = [self.colors["text_sub"]] * 5 + ["#2563EB", "#DC2626"]
+        day_colors = [self.colors["text_sub"]] * 5 + ["#1E66F5", "#D20F39"]
         for i, d in enumerate(days):
             lbl = QLabel(d)
             lbl.setFixedSize(64, 36)
@@ -1397,9 +1397,9 @@ class MultiApp(QMainWindow):
                 if is_today:
                     bg, fg, border = self.colors["primary"], "#1E1E2E", "none"
                 elif key in self.calendar_notes:
-                    bg, fg, border = "#45475A", self.colors["accent"], f"2px solid {self.colors['accent']}"
+                    bg, fg, border = "#D4D8E3", self.colors["accent"], f"2px solid {self.colors['accent']}"
                 else:
-                    bg, fg, border = self.colors["bg_base"], self.colors["text_main"], "1px solid #45475A"
+                    bg, fg, border = self.colors["bg_base"], self.colors["text_main"], "1px solid #D4D8E3"
 
                 btn = QPushButton(str(day))
                 btn.setFixedSize(64, 48)
@@ -1414,7 +1414,7 @@ class MultiApp(QMainWindow):
                         border-radius: 10px;
                     }}
                     QPushButton:hover {{
-                        background-color: #45475A;
+                        background-color: #D4D8E3;
                         color: {self.colors['primary']};
                     }}
                 """)
