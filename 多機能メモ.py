@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
-    QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout
+    QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout, QCheckBox
 )
 from PySide6.QtGui import QFont, QCursor
 
@@ -143,6 +143,47 @@ class StyledInputDialog(QDialog):
 
     def get_value(self):
         return self.entry.text()
+
+
+# --- 参照するメモの複数選択ダイアログ ---
+class ReferenceSelectDialog(QDialog):
+    def __init__(self, folder_names, checked_names, current_name, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("参照するメモを選択")
+        self.setMinimumWidth(360)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1E1E2E;
+                border: 1px solid #313244;
+            }
+        """)
+        self.setWindowModality(Qt.WindowModal)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 28, 28, 28)
+        layout.setSpacing(14)
+
+        lbl = QLabel("参照しながら書きたいメモにチェックしてください")
+        lbl.setStyleSheet("color: #CDD6F4; font-size: 15px; font-weight: 600;")
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl)
+
+        self.checkboxes = {}
+        for name in folder_names:
+            label = f"{name}（編集中）" if name == current_name else name
+            cb = QCheckBox(label)
+            cb.setChecked(name in checked_names)
+            cb.setStyleSheet("color: #CDD6F4; font-size: 14px; padding: 4px 0;")
+            layout.addWidget(cb)
+            self.checkboxes[name] = cb
+
+        btn = StyledButton("決定", "#89B4FA")
+        btn.setFixedHeight(48)
+        btn.clicked.connect(self.accept)
+        layout.addWidget(btn)
+
+    def selected_names(self):
+        return [name for name, cb in self.checkboxes.items() if cb.isChecked()]
 
 
 # --- メインアプリケーションクラス ---
@@ -300,6 +341,7 @@ class MultiApp(QMainWindow):
             self.vault_items = []
 
         self.current_memo_folder = list(self.memo_data.keys())[0]
+        self.reference_folders = []
         self.is_authenticated = False
         self.cur_year, self.cur_month = datetime.now().year, datetime.now().month
         self.sounds = {"📢 警告音": "SystemHand", "🎵 標準音": "SystemAsterisk"}
@@ -325,6 +367,7 @@ class MultiApp(QMainWindow):
         if screen_key == "memo":
             self.draw_tabs()
             self.load_current_memo_text()
+            self.refresh_reference_panel()
         elif screen_key == "todo":
             self.refresh_todo()
         elif screen_key == "calendar":
@@ -643,14 +686,25 @@ class MultiApp(QMainWindow):
         """)
         add_btn.clicked.connect(self.add_folder)
         tab_row_layout.addWidget(add_btn)
+
+        ref_select_btn = StyledButton("📚 参照するメモを選択", self.colors["accent"], compact=True)
+        ref_select_btn.clicked.connect(self.open_reference_selector)
+        tab_row_layout.addWidget(ref_select_btn)
         layout.addWidget(tab_row)
+
+        # メイン領域: 左にエディタ、右に参照メモパネル
+        content_row = QHBoxLayout()
+        content_row.setSpacing(10)
+
+        editor_col = QVBoxLayout()
+        editor_col.setSpacing(10)
 
         # テキストエリア（メイン領域、最大限広く）
         self.memo_text_widget = QTextEdit()
         self.memo_text_widget.setFont(QFont("Meiryo UI", 15))
         self.memo_text_widget.setPlaceholderText("ここにメモを入力...")
         self.memo_text_widget.textChanged.connect(self.save_memo_content)
-        layout.addWidget(self.memo_text_widget, stretch=1)
+        editor_col.addWidget(self.memo_text_widget, stretch=1)
 
         # 下部ツールバー: フォルダ操作
         bottom_bar = QWidget()
@@ -674,7 +728,32 @@ class MultiApp(QMainWindow):
         hint_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 12px; border: none;")
         bottom_layout.addWidget(hint_lbl)
 
-        layout.addWidget(bottom_bar)
+        editor_col.addWidget(bottom_bar)
+        content_row.addLayout(editor_col, stretch=2)
+
+        # 参照パネル: 選択した他のメモを読み取り専用で並べて表示
+        ref_panel = QWidget()
+        ref_panel.setFixedWidth(320)
+        ref_panel_layout = QVBoxLayout(ref_panel)
+        ref_panel_layout.setContentsMargins(0, 0, 0, 0)
+        ref_panel_layout.setSpacing(8)
+
+        ref_title = QLabel("📚 参照中のメモ")
+        ref_title.setStyleSheet(f"color: {self.colors['text_main']}; font-size: 15px; font-weight: 700; border: none;")
+        ref_panel_layout.addWidget(ref_title)
+
+        ref_scroll = QScrollArea()
+        ref_scroll.setWidgetResizable(True)
+        ref_scroll.setStyleSheet("border: none; background: transparent;")
+        ref_container = QWidget()
+        self.reference_layout = QVBoxLayout(ref_container)
+        self.reference_layout.setAlignment(Qt.AlignTop)
+        self.reference_layout.setSpacing(10)
+        ref_scroll.setWidget(ref_container)
+        ref_panel_layout.addWidget(ref_scroll, stretch=1)
+
+        content_row.addWidget(ref_panel, stretch=1)
+        layout.addLayout(content_row, stretch=1)
 
         self.stacked_widget.addWidget(screen)
         self.screens["memo"] = screen
@@ -726,6 +805,7 @@ class MultiApp(QMainWindow):
         self.current_memo_folder = name
         self.draw_tabs()
         self.load_current_memo_text()
+        self.refresh_reference_panel()
 
     def save_memo_content(self):
         if hasattr(self, 'memo_text_widget'):
@@ -758,19 +838,82 @@ class MultiApp(QMainWindow):
                         new_memo_data[k] = v
                 self.memo_data = new_memo_data
                 self.current_memo_folder = res
+                self.reference_folders = [res if n == old_name else n for n in self.reference_folders]
                 self.draw_tabs()
+                self.refresh_reference_panel()
 
     def delete_folder(self, name):
         if len(self.memo_data) <= 1:
             QMessageBox.warning(self, "警告", "既存 of メインフォルダは削除できません")
             return
-        
+
         ret = QMessageBox.question(self, "確認", f"フォルダ「{name}」を削除しますか？", QMessageBox.Yes | QMessageBox.No)
         if ret == QMessageBox.Yes:
             del self.memo_data[name]
             if self.current_memo_folder == name:
                 self.current_memo_folder = list(self.memo_data.keys())[0]
+            self.reference_folders = [n for n in self.reference_folders if n != name]
             self.draw_tabs()
+            self.refresh_reference_panel()
+
+    def open_reference_selector(self):
+        dialog = ReferenceSelectDialog(
+            list(self.memo_data.keys()), self.reference_folders, self.current_memo_folder, parent=self
+        )
+        if dialog.exec_() == QDialog.Accepted:
+            self.reference_folders = dialog.selected_names()
+            self.refresh_reference_panel()
+
+    def refresh_reference_panel(self):
+        if not hasattr(self, 'reference_layout'):
+            return
+        while self.reference_layout.count():
+            child = self.reference_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        names = [n for n in self.reference_folders if n in self.memo_data]
+        if not names:
+            empty = QLabel("「📚 参照するメモを選択」から\n見ながら書きたいメモを選べます")
+            empty.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 13px; border: none;")
+            empty.setWordWrap(True)
+            self.reference_layout.addWidget(empty)
+            return
+
+        for name in names:
+            card = QWidget()
+            card.setStyleSheet(f"""
+                QWidget {{
+                    background-color: {self.colors['card_bg']};
+                    border-radius: 12px;
+                    border: 1px solid #45475A;
+                }}
+            """)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(12, 10, 12, 10)
+            card_layout.setSpacing(6)
+
+            title = QLabel(name)
+            title.setStyleSheet(f"color: {self.colors['accent']}; font-size: 14px; font-weight: 700; border: none;")
+            card_layout.addWidget(title)
+
+            content = QTextEdit()
+            content.setPlainText(self.memo_data.get(name, ""))
+            content.setReadOnly(True)
+            content.setFixedHeight(160)
+            content.setStyleSheet(f"""
+                QTextEdit {{
+                    background-color: {self.colors['bg_surface']};
+                    color: {self.colors['text_sub']};
+                    border: 1px solid #45475A;
+                    border-radius: 8px;
+                    padding: 8px;
+                    font-size: 13px;
+                }}
+            """)
+            card_layout.addWidget(content)
+
+            self.reference_layout.addWidget(card)
             self.load_current_memo_text()
 
 
