@@ -756,6 +756,10 @@ class MultiApp(QMainWindow):
         ref_title.setStyleSheet(f"color: {self.colors['text_main']}; font-size: 15px; font-weight: 700; border: none;")
         ref_panel_layout.addWidget(ref_title)
 
+        ref_hint = QLabel("↔ 境界線をドラッグすると幅を調整できます")
+        ref_hint.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 12px; border: none;")
+        ref_panel_layout.addWidget(ref_hint)
+
         ref_scroll = QScrollArea()
         ref_scroll.setWidgetResizable(True)
         ref_scroll.setStyleSheet("border: none; background: transparent;")
