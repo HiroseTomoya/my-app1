@@ -236,6 +236,22 @@ class RecruitmentData:
             color = COMPANY_COLOR_PALETTE[len(self.companies) % len(COMPANY_COLOR_PALETTE)]
         self.companies[name] = color
 
+    def rename_company(self, old_name, new_name, color):
+        """企業名・色を変更し、既存の予定に登録されている企業名も追従させる"""
+        if old_name in self.companies:
+            del self.companies[old_name]
+        self.companies[new_name] = color
+        if new_name != old_name:
+            for e in self.events:
+                if e["company"] == old_name:
+                    e["company"] = new_name
+
+    def remove_company(self, name):
+        self.companies.pop(name, None)
+
+    def events_with_company(self, name):
+        return [e for e in self.events if e["company"] == name]
+
     def add_status(self, name):
         used_colors = [s["color"] for s in self.statuses]
         color = pick_distinct_color(used_colors)
@@ -508,9 +524,9 @@ def section_card(title_text, icon, action_button=None):
 class AddCompanyDialog(QDialog):
     """新規企業の登録（名称の自由入力＋自分で色を選べるカラーピッカー）"""
 
-    def __init__(self, default_color, parent=None):
+    def __init__(self, default_color, initial_name="", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("企業を追加")
+        self.setWindowTitle("企業を編集" if initial_name else "企業を追加")
         self.setMinimumWidth(380)
         self.selected_color = default_color
 
@@ -518,12 +534,13 @@ class AddCompanyDialog(QDialog):
         layout.setContentsMargins(26, 26, 26, 26)
         layout.setSpacing(14)
 
-        heading = QLabel("🏢 新しい企業を登録")
+        heading = QLabel("✏️ 企業を編集" if initial_name else "🏢 新しい企業を登録")
         heading.setStyleSheet(f"font-size:16px; font-weight:800; color:{COLORS['primary']};")
         layout.addWidget(heading)
 
         layout.addWidget(QLabel("企業名"))
         self.name_edit = QLineEdit()
+        self.name_edit.setText(initial_name)
         self.name_edit.setPlaceholderText("例: ○○株式会社")
         layout.addWidget(self.name_edit)
 
@@ -544,7 +561,7 @@ class AddCompanyDialog(QDialog):
         btn_row.setSpacing(10)
         cancel_btn = StyledButton("キャンセル", COLORS["surface2"], compact=True)
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = StyledButton("追加する", COLORS["success"], compact=True)
+        ok_btn = StyledButton("保存する" if initial_name else "追加する", COLORS["success"], compact=True)
         ok_btn.clicked.connect(self.accept)
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(ok_btn)
@@ -1261,6 +1278,33 @@ class RecruitmentCalendarWindow(QMainWindow):
             self.rdata.save()
             self.refresh_side_panels()
 
+    def edit_company(self, name):
+        color = self.rdata.companies.get(name, COMPANY_COLOR_PALETTE[0])
+        dialog = AddCompanyDialog(color, initial_name=name, parent=self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        new_name, new_color = dialog.result_data()
+        if not new_name:
+            QMessageBox.warning(self, "エラー", "企業名を入力してください。")
+            return
+        if new_name != name and new_name in self.rdata.companies:
+            QMessageBox.warning(self, "エラー", "同じ名前の企業が既に登録されています。")
+            return
+        self.rdata.rename_company(name, new_name, new_color)
+        self.rdata.save()
+        self.on_data_changed()
+
+    def delete_company(self, name):
+        affected = self.rdata.events_with_company(name)
+        msg = f"企業「{name}」を削除しますか？"
+        if affected:
+            msg += f"\n\nこの企業が設定された予定が{len(affected)}件あります。予定自体は削除されず、企業名だけが一覧の選択肢から消えます。"
+        ret = QMessageBox.question(self, "確認", msg, QMessageBox.Yes | QMessageBox.No)
+        if ret == QMessageBox.Yes:
+            self.rdata.remove_company(name)
+            self.rdata.save()
+            self.on_data_changed()
+
     def delete_status(self, name):
         affected = self.rdata.events_with_status(name)
         msg = f"選考状況「{name}」を削除しますか？"
@@ -1360,9 +1404,25 @@ class RecruitmentCalendarWindow(QMainWindow):
             lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:12px; border:none;")
             self.company_layout.addWidget(lbl)
         for name, color in self.rdata.companies.items():
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+
             lbl = QLabel(name)
             lbl.setStyleSheet(color_chip_style(color) + "border-radius:20px;")
-            self.company_layout.addWidget(lbl)
+            row_layout.addWidget(lbl)
+            row_layout.addStretch()
+
+            edit_btn = IconButton("✏️", COLORS["primary"], size=22)
+            edit_btn.clicked.connect(lambda checked=False, n=name: self.edit_company(n))
+            row_layout.addWidget(edit_btn)
+
+            del_btn = IconButton("×", COLORS["danger"], size=22)
+            del_btn.clicked.connect(lambda checked=False, n=name: self.delete_company(n))
+            row_layout.addWidget(del_btn)
+
+            self.company_layout.addWidget(row)
 
         self._clear_layout(self.status_layout, keep_first=1)
         for s in self.rdata.statuses:
