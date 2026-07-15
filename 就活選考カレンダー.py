@@ -6,11 +6,11 @@ import calendar
 import colorsys
 from datetime import datetime, date, timedelta
 
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QTime
 from PySide6.QtGui import QColor, QCursor, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox, QDialog,
+    QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QTimeEdit, QCheckBox, QDialog,
     QScrollArea, QMessageBox, QColorDialog, QFrame, QSizePolicy
 )
 
@@ -311,6 +311,14 @@ def event_dates_text(event):
     return "、".join(parts)
 
 
+def event_dates_and_time_text(event):
+    """日付に加えて、時間が設定されていればそれも並べて表示する"""
+    text = event_dates_text(event)
+    if event.get("time"):
+        text += f" {event['time']}〜"
+    return text
+
+
 def color_chip_style(bg_color, border_color=None, text_color=None):
     border = border_color or bg_color
     if text_color is None:
@@ -435,7 +443,7 @@ def build_event_summary_row(rdata, event, on_edit, on_delete):
     chip.setStyleSheet(color_chip_style(company_color, status_color))
     row_layout.addWidget(chip)
 
-    date_lbl = QLabel(event_dates_text(event))
+    date_lbl = QLabel(event_dates_and_time_text(event))
     date_lbl.setStyleSheet(f"color:{COLORS['text_sub']}; font-size:10px; border:none;")
     date_lbl.setWordWrap(True)
     row_layout.addWidget(date_lbl, stretch=1)
@@ -642,6 +650,20 @@ class EventDialog(QDialog):
         self.dates_scroll.setWidget(self.dates_container)
         layout.addWidget(self.dates_scroll)
 
+        layout.addWidget(QLabel("時間（任意。面接開始時刻など）"))
+        time_row = QHBoxLayout()
+        time_row.setSpacing(8)
+        self.time_checkbox = QCheckBox("時間を指定する")
+        self.time_checkbox.toggled.connect(self._on_time_checkbox_toggled)
+        time_row.addWidget(self.time_checkbox)
+        self.time_edit = QTimeEdit()
+        self.time_edit.setDisplayFormat("HH:mm")
+        self.time_edit.setTime(QTime(10, 0))
+        self.time_edit.setEnabled(False)
+        time_row.addWidget(self.time_edit)
+        time_row.addStretch()
+        layout.addLayout(time_row)
+
         layout.addWidget(QLabel("メモ（任意）"))
         self.memo_edit = QLineEdit()
         layout.addWidget(self.memo_edit)
@@ -687,10 +709,17 @@ class EventDialog(QDialog):
             for days in editing_event.get("notify_days", []):
                 if days in self.notify_checks:
                     self.notify_checks[days].setChecked(True)
+            if editing_event.get("time"):
+                h, m = editing_event["time"].split(":")
+                self.time_edit.setTime(QTime(int(h), int(m)))
+                self.time_checkbox.setChecked(True)
 
         if not self.selected_dates:
             self.selected_dates.add(date.today().isoformat())
         self.refresh_dates_list()
+
+    def _on_time_checkbox_toggled(self, checked):
+        self.time_edit.setEnabled(checked)
 
     def _on_range_start_changed(self, qdate):
         """開始日を終了日より後にした場合、終了日も自動で合わせる（期間の逆転を防ぐ）"""
@@ -791,6 +820,7 @@ class EventDialog(QDialog):
             "company": self.company_combo.currentText(),
             "status": self.status_combo.currentText(),
             "dates": sorted(self.selected_dates),
+            "time": self.time_edit.time().toString("HH:mm") if self.time_checkbox.isChecked() else "",
             "memo": self.memo_edit.text().strip(),
             "notify_days": notify_days,
         }
@@ -867,7 +897,7 @@ class DayDetailDialog(QDialog):
             chip.setStyleSheet(color_chip_style(company_color, status_color))
             row_layout.addWidget(chip)
 
-            detail_text = event_dates_text(e)
+            detail_text = event_dates_and_time_text(e)
             if e.get("memo"):
                 detail_text += f" ・ {e['memo']}"
             memo_lbl = QLabel(detail_text)
@@ -1255,7 +1285,7 @@ class RecruitmentCalendarWindow(QMainWindow):
         for days_left, e in upcoming:
             when = "本日" if days_left == 0 else f"あと{days_left}日"
             badge_color = COLORS["danger"] if days_left == 0 else (COLORS["warning"] if days_left <= 1 else COLORS["primary"])
-            lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{event_dates_text(e)}）")
+            lbl = QLabel(f"【{when}】{e['company']} / {e['status']}（{event_dates_and_time_text(e)}）")
             status_color = self.rdata.status_color(e["status"])
             lbl.setWordWrap(True)
             lbl.setStyleSheet(
@@ -1333,7 +1363,7 @@ class RecruitmentCalendarWindow(QMainWindow):
         self.rdata.last_notify_check = today_str()
         self.rdata.save()
         if hits:
-            lines = [f"・{e['company']} / {e['status']}（{event_dates_text(e)}）" for e in hits]
+            lines = [f"・{e['company']} / {e['status']}（{event_dates_and_time_text(e)}）" for e in hits]
             QMessageBox.information(
                 self, "締切・予定のお知らせ",
                 "以下の予定の通知タイミングになりました。\n\n" + "\n".join(lines)
