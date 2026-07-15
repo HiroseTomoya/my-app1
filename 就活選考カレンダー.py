@@ -164,6 +164,8 @@ class RecruitmentData:
         if not self.statuses:
             self.statuses = [{"name": n, "color": c, "preset": True} for n, c in STATUS_PRESETS]
         needs_save = self._migrate_events_to_date_list()
+        if self._migrate_events_to_time_range():
+            needs_save = True
         if self._resolve_status_color_conflicts():
             needs_save = True
         if needs_save:
@@ -188,6 +190,20 @@ class RecruitmentData:
             else:
                 e["dates"] = [e.pop("date", today_str())]
             changed = True
+        return changed
+
+    def _migrate_events_to_time_range(self):
+        """旧形式（単一のtime）の予定を、開始・終了時刻（time_start/time_end）に変換する"""
+        changed = False
+        for e in self.events:
+            if "time" in e:
+                e["time_start"] = e.pop("time")
+                e["time_end"] = ""
+                changed = True
+            elif "time_start" not in e:
+                e["time_start"] = ""
+                e["time_end"] = ""
+                changed = True
         return changed
 
     def _resolve_status_color_conflicts(self):
@@ -312,10 +328,12 @@ def event_dates_text(event):
 
 
 def event_dates_and_time_text(event):
-    """日付に加えて、時間が設定されていればそれも並べて表示する"""
+    """日付に加えて、時間（開始〜終了）が設定されていればそれも並べて表示する"""
     text = event_dates_text(event)
-    if event.get("time"):
-        text += f" {event['time']}〜"
+    start = event.get("time_start", "")
+    end = event.get("time_end", "")
+    if start:
+        text += f" {start}〜{end}" if (end and end != start) else f" {start}〜"
     return text
 
 
@@ -650,17 +668,24 @@ class EventDialog(QDialog):
         self.dates_scroll.setWidget(self.dates_container)
         layout.addWidget(self.dates_scroll)
 
-        layout.addWidget(QLabel("時間（任意。面接開始時刻など）"))
+        layout.addWidget(QLabel("時間（任意。面接の開始〜終了時刻など）"))
         time_row = QHBoxLayout()
         time_row.setSpacing(8)
         self.time_checkbox = QCheckBox("時間を指定する")
         self.time_checkbox.toggled.connect(self._on_time_checkbox_toggled)
         time_row.addWidget(self.time_checkbox)
-        self.time_edit = QTimeEdit()
-        self.time_edit.setDisplayFormat("HH:mm")
-        self.time_edit.setTime(QTime(10, 0))
-        self.time_edit.setEnabled(False)
-        time_row.addWidget(self.time_edit)
+        self.time_start_edit = QTimeEdit()
+        self.time_start_edit.setDisplayFormat("HH:mm")
+        self.time_start_edit.setTime(QTime(10, 0))
+        self.time_start_edit.setEnabled(False)
+        self.time_start_edit.timeChanged.connect(self._on_time_start_changed)
+        time_row.addWidget(self.time_start_edit)
+        time_row.addWidget(QLabel("〜"))
+        self.time_end_edit = QTimeEdit()
+        self.time_end_edit.setDisplayFormat("HH:mm")
+        self.time_end_edit.setTime(QTime(11, 0))
+        self.time_end_edit.setEnabled(False)
+        time_row.addWidget(self.time_end_edit)
         time_row.addStretch()
         layout.addLayout(time_row)
 
@@ -709,9 +734,12 @@ class EventDialog(QDialog):
             for days in editing_event.get("notify_days", []):
                 if days in self.notify_checks:
                     self.notify_checks[days].setChecked(True)
-            if editing_event.get("time"):
-                h, m = editing_event["time"].split(":")
-                self.time_edit.setTime(QTime(int(h), int(m)))
+            if editing_event.get("time_start"):
+                h, m = editing_event["time_start"].split(":")
+                self.time_start_edit.setTime(QTime(int(h), int(m)))
+                if editing_event.get("time_end"):
+                    h2, m2 = editing_event["time_end"].split(":")
+                    self.time_end_edit.setTime(QTime(int(h2), int(m2)))
                 self.time_checkbox.setChecked(True)
 
         if not self.selected_dates:
@@ -719,7 +747,13 @@ class EventDialog(QDialog):
         self.refresh_dates_list()
 
     def _on_time_checkbox_toggled(self, checked):
-        self.time_edit.setEnabled(checked)
+        self.time_start_edit.setEnabled(checked)
+        self.time_end_edit.setEnabled(checked)
+
+    def _on_time_start_changed(self, qtime):
+        """開始時刻を終了時刻より後にした場合、終了時刻も自動で合わせる"""
+        if self.time_end_edit.time() < qtime:
+            self.time_end_edit.setTime(qtime)
 
     def _on_range_start_changed(self, qdate):
         """開始日を終了日より後にした場合、終了日も自動で合わせる（期間の逆転を防ぐ）"""
@@ -813,14 +847,20 @@ class EventDialog(QDialog):
         if not self.selected_dates:
             QMessageBox.warning(self, "エラー", "日付を1つ以上追加してください。")
             return
+        if self.time_checkbox.isChecked() and self.time_end_edit.time() < self.time_start_edit.time():
+            QMessageBox.warning(self, "エラー", "終了時刻は開始時刻以降にしてください。")
+            return
 
         notify_days = [days for days, cb in self.notify_checks.items() if cb.isChecked()]
+        time_start = self.time_start_edit.time().toString("HH:mm") if self.time_checkbox.isChecked() else ""
+        time_end = self.time_end_edit.time().toString("HH:mm") if self.time_checkbox.isChecked() else ""
         record = {
             "id": self.editing_event["id"] if self.editing_event else self.rdata.next_event_id(),
             "company": self.company_combo.currentText(),
             "status": self.status_combo.currentText(),
             "dates": sorted(self.selected_dates),
-            "time": self.time_edit.time().toString("HH:mm") if self.time_checkbox.isChecked() else "",
+            "time_start": time_start,
+            "time_end": time_end,
             "memo": self.memo_edit.text().strip(),
             "notify_days": notify_days,
         }
