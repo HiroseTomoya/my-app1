@@ -1,0 +1,52 @@
+{
+  "companies": {},
+  "statuses": [
+    {
+      "name": "書類選考",
+      "color": "#89B4FA",
+      "preset": true
+    },
+    {
+      "name": "Webテスト",
+      "color": "#74C7EC",
+      "preset": true
+    },
+    {
+      "name": "GD（グループディスカッション）",
+      "color": "#94E2D5",
+      "preset": true
+    },
+    {
+      "name": "一次面接",
+      "color": "#A6E3A1",
+      "preset": true
+    },
+    {
+      "name": "二次面接",
+      "color": "#F9E2AF",
+      "preset": true
+    },
+    {
+      "name": "最終面接",
+      "color": "#FAB387",
+      "preset": true
+    },
+    {
+      "name": "内定",
+      "color": "#F38BA8",
+      "preset": true
+    },
+    {
+      "name": "インターン参加確定",
+      "color": "#CBA6F7",
+      "preset": true
+    },
+    {
+      "name": "お見送り",
+      "color": "#6C7086",
+      "preset": true
+    }
+  ],
+  "events": [],
+  "last_notify_check": "2026-07-09"
+}

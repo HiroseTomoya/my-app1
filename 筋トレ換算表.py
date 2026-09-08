@@ -159,7 +159,7 @@ class UltimateVisibilityCalc(QWidget):
                 reps = max(1, int((rm / tw - 1) * div))
                 self.msg_val.setText(f"🔥 {tw}kg を {reps}回 狙えます")
             else:
-                self.msg_val.setText(f"🚀 あと {tw-rm:.1f} kg で達成")
+                self.msg_val.setText(f"🚀 あと {tw-rm:.1f} kg で目標重量達成！")
         except:
             self.rm_val.setText("-")
             self.msg_val.setText("数値を入力してください")

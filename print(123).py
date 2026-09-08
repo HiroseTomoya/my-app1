@@ -1,0 +1,6 @@
+print(123)
+print("\\"+str(100)+"もらった")
+print(str(1)+"\t" + str(2)+"\t"+str(3))
+i=int(input("あなたは何歳ですか?"))
+print("あなたは"+str(i)+"才です")
+long=float(input("身長を入力してください"))

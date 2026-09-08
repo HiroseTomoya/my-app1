@@ -1,238 +1,792 @@
-import tkinter as tk
-from tkinter import messagebox
-import time
-import threading
-import winsound
-import calendar
-import hashlib
+import sys
 import json
 import os
+import shutil
+import time #時間関連の機能をモジュール
+import hashlib
 from datetime import datetime
+import calendar #カレンダー機能をモジュール
 
-class MultiApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("多機能メモツール ")
-        self.root.geometry("700x850")
+# PySide6 モジュールのインポート
+from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
+    QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout
+)
+from PySide6.QtGui import QFont, QCursor
 
-        self.DATA_FILE = "memo_pro_data.json"
-        self.VAULT_FILE = "vault_pro_data.json"
+# Windows環境用の音声再生 (Mac/Linux環境を考慮してtry-except)
+try:
+    import winsound
+    HAS_WINSOUND = True
+except ImportError:
+    HAS_WINSOUND = False
+
+
+# --- タイマー並行処理用のQThread ---
+class TimerWorker(QThread):
+    timeout_signal = Signal()
+    tick_signal = Signal(int)
+
+    def __init__(self, seconds):
+        super().__init__()
+        self.seconds = seconds
+        self.is_running = True
+
+    def run(self):
+        while self.seconds > 0 and self.is_running:
+            time.sleep(1)
+            if not self.is_running:
+                break
+            self.seconds -= 1
+            self.tick_signal.emit(self.seconds)
+        
+        if self.seconds == 0 and self.is_running:
+            self.timeout_signal.emit()
+
+    def stop(self):
+        self.is_running = False
+
+
+# --- カスタムボタンスタイル ---
+class StyledButton(QPushButton):
+    def __init__(self, text, base_color, parent=None, width=None, compact=False):
+        super().__init__(text, parent)
+        self.base_color = base_color
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        if width:
+            self.setFixedWidth(width)
+
+        hover_color = self.lighten(base_color)
+        pad = "11px 22px" if compact else "14px 30px"
+        font_size = "14px" if compact else "16px"
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {base_color};
+                color: white;
+                font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+                font-size: {font_size};
+                font-weight: 600;
+                border-radius: 12px;
+                padding: {pad};
+                border: none;
+                min-height: 38px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+        """)
+
+    def lighten(self, color):
+        r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+        r = min(255, r + 35)
+        g = min(255, g + 35)
+        b = min(255, b + 35)
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+
+# --- カスタム入力ダイアログ ---
+class StyledInputDialog(QDialog):
+    def __init__(self, title, prompt, initial_value="", is_password=False, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(420)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1E1E2E;
+                border: 1px solid #313244;
+            }
+        """)
+        self.setWindowModality(Qt.WindowModal)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(32, 32, 32, 32)
+        layout.setSpacing(20)
+
+        lbl = QLabel(prompt)
+        lbl.setStyleSheet("""
+            color: #CDD6F4;
+            font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+        """)
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl)
+
+        self.entry = QLineEdit()
+        self.entry.setText(initial_value)
+        self.entry.setStyleSheet("""
+            QLineEdit {
+                background-color: #313244;
+                color: #CDD6F4;
+                font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+                font-size: 16px;
+                border: 2px solid #45475A;
+                border-radius: 12px;
+                padding: 14px 18px;
+                min-height: 22px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #89B4FA;
+            }
+        """)
+        if is_password:
+            self.entry.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.entry)
+
+        btn = StyledButton("決定", "#89B4FA")
+        btn.setFixedHeight(50)
+        btn.clicked.connect(self.accept)
+        layout.addWidget(btn)
+
+    def get_value(self):
+        return self.entry.text()
+
+
+# --- メインアプリケーションクラス ---
+class MultiApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Multi Memo")
+        self.resize(900, 750)
+        self.setMinimumSize(600, 500)
+        
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.DATA_FILE = os.path.join(BASE_DIR, "memo_pro_data.json")
+        self.VAULT_FILE = os.path.join(BASE_DIR, "vault_pro_data.json")
 
         self.init_style()
         self.load_all_data()
 
-        self.container = tk.Frame(root, bg=self.colors["bg_base"])
-        self.container.pack(fill="both", expand=True)
+        # 画面管理用のスタックウィジェット
+        self.stacked_widget = QStackedWidget()
+        self.setCentralWidget(self.stacked_widget)
 
-        self.show_selector()
+        self.timer_worker = None
+
+        # 全ての画面レイアウトをはじめに構築して固定配置（バグの根本原因の修正）
+        self.screens = {}
+        self.create_all_screens()
 
     def init_style(self):
         self.colors = {
-            "bg_base": "#FFFFFF",      
-            "card_bg": "#F5F5F5",      
-            "primary": "#0047AB",      
-            "accent": "#00A86B",      
-            "success": "#2E8B57",      
-            "danger": "#DC143C",       
-            "neutral": "#757575",      
-            "text_main": "#212121",    
-            "text_sub": "#616161",     
-            "tab_active": "#0047AB",   
-            "tab_inactive": "#061310" 
+            "bg_base": "#1E1E2E",
+            "bg_surface": "#181825",
+            "card_bg": "#313244",
+            "primary": "#89B4FA",
+            "accent": "#CBA6F7",
+            "success": "#A6E3A1",
+            "danger": "#F38BA8",
+            "neutral": "#9399B2",
+            "text_main": "#CDD6F4",
+            "text_sub": "#A6ADC8",
+            "tab_active": "#89B4FA",
+            "tab_inactive": "#45475A",
+            "btn_back": "#585B70"
         }
-        self.FONT_MAIN = ("Segoe UI", 11)
-        self.FONT_TITLE = ("Segoe UI", 32, "bold")
-        self.FONT_BUTTON = ("Segoe UI", 12, "bold")
-        self.FONT_TAB = ("Segoe UI", 10, "bold")
-        self.FONT_CAL = ("Segoe UI", 10, "bold")
+        self.setStyleSheet(f"""
+            * {{
+                font-family: 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+                font-size: 15px;
+            }}
+            QMainWindow {{
+                background-color: {self.colors['bg_base']};
+            }}
+            QScrollArea {{
+                background: transparent;
+                border: none;
+            }}
+            QTextEdit {{
+                background-color: {self.colors['card_bg']};
+                color: {self.colors['text_main']};
+                font-size: 16px;
+                line-height: 1.7;
+                border: 2px solid #45475A;
+                border-radius: 14px;
+                padding: 18px;
+                selection-background-color: #45475A;
+            }}
+            QTextEdit:focus {{
+                border: 2px solid {self.colors['primary']};
+            }}
+            QLineEdit {{
+                background-color: {self.colors['card_bg']};
+                color: {self.colors['text_main']};
+                font-size: 15px;
+                border: 2px solid #45475A;
+                border-radius: 12px;
+                padding: 12px 16px;
+                min-height: 24px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {self.colors['primary']};
+            }}
+            QLabel {{
+                color: {self.colors['text_main']};
+                font-size: 15px;
+            }}
+            QComboBox {{
+                font-size: 15px;
+                padding: 10px 14px;
+                border: 2px solid #45475A;
+                border-radius: 12px;
+                background: {self.colors['card_bg']};
+                color: {self.colors['text_main']};
+                min-height: 24px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                padding-right: 10px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {self.colors['card_bg']};
+                color: {self.colors['text_main']};
+                selection-background-color: #45475A;
+            }}
+            QMessageBox {{
+                background-color: {self.colors['bg_base']};
+                font-size: 15px;
+            }}
+            QMessageBox QLabel {{
+                color: {self.colors['text_main']};
+                font-size: 15px;
+                min-width: 300px;
+            }}
+            QMessageBox QPushButton {{
+                background-color: {self.colors['primary']};
+                color: #1E1E2E;
+                min-width: 100px;
+                min-height: 40px;
+                padding: 10px 24px;
+                border-radius: 10px;
+                font-weight: 600;
+                font-size: 14px;
+                border: none;
+            }}
+        """)
 
-    # --- データ管理 ---
-    
+    def _load_json_with_backup(self, filepath):
+        for path in [filepath, filepath + ".bak"]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if path.endswith(".bak"):
+                        shutil.copy2(path, filepath)
+                    return data
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        return None
+
     def load_all_data(self):
-        if os.path.exists(self.DATA_FILE):
-            with open(self.DATA_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                self.todo_items = d.get("todo", [])
-                self.memo_data = d.get("memo", {"メイン": ""})
-                self.calendar_notes = d.get("calendar", {})
+        d = self._load_json_with_backup(self.DATA_FILE)
+        if d:
+            self.todo_items = d.get("todo", [])
+            self.memo_data = d.get("memo", {"メイン": ""})
+            self.calendar_notes = d.get("calendar", {})
         else:
             self.todo_items, self.memo_data, self.calendar_notes = [], {"メイン": ""}, {}
 
-        if os.path.exists(self.VAULT_FILE):
-            with open(self.VAULT_FILE, "r", encoding="utf-8") as f:
-                v = json.load(f)
-                self.master_hash = v.get("hash")
-                self.birth_hash = v.get("birth_hash")
-                self.vault_items = v.get("items", [])
+        v = self._load_json_with_backup(self.VAULT_FILE)
+        if v:
+            self.master_hash = v.get("hash")
+            self.birth_hash = v.get("birth_hash")
+            self.vault_items = v.get("items", [])
         else:
-            self.master_hash, self.birth_hash, self.vault_items = None, None, []
+            self.master_hash = None
+            self.birth_hash = None
+            self.vault_items = []
 
         self.current_memo_folder = list(self.memo_data.keys())[0]
         self.is_authenticated = False
-        self.timer_running = False
-        self.remaining_seconds = 0
         self.cur_year, self.cur_month = datetime.now().year, datetime.now().month
         self.sounds = {"📢 警告音": "SystemHand", "🎵 標準音": "SystemAsterisk"}
 
+    def _save_json_safe(self, filepath, data):
+        tmp_path = filepath + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        if os.path.exists(filepath):
+            shutil.copy2(filepath, filepath + ".bak")
+        os.replace(tmp_path, filepath)
+
     def save_all_data(self):
         data = {"todo": self.todo_items, "memo": self.memo_data, "calendar": self.calendar_notes}
-        with open(self.DATA_FILE, "w", encoding="utf-8") as f: 
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        self._save_json_safe(self.DATA_FILE, data)
         vault = {"hash": self.master_hash, "birth_hash": self.birth_hash, "items": self.vault_items}
-        with open(self.VAULT_FILE, "w", encoding="utf-8") as f: 
-            json.dump(vault, f, ensure_ascii=False, indent=4)
+        self._save_json_safe(self.VAULT_FILE, vault)
 
-    # --- 共通UI ---
-    
-    def styled_button(self, parent, text, command, color, width=None, pady=12):
-        btn = tk.Label(parent, text=text, bg=color, fg="white", font=self.FONT_BUTTON, padx=20, pady=pady, cursor="hand2", bd=0, width=width)
-        btn.bind("<Enter>", lambda e: btn.config(bg=self.lighten(color)))
-        btn.bind("<Leave>", lambda e: btn.config(bg=color))
-        btn.bind("<Button-1>", lambda e: command())
-        return btn
-
-    def lighten(self, color):
-        ov = {
-            "#0047AB": "#1E90FF", 
-            "#00A86B": "#3CB371", 
-            "#2E8B57": "#3CB371", 
-            "#DC143C": "#FF4500", 
-            "#757575": "#9E9E9E", 
-            "#E0E0E0": "#F5F5F5"  
-        }
-        return ov.get(color, color)
-
-    def clear_frame(self):
+    def change_screen(self, screen_key):
         self.save_all_data()
-        for w in self.container.winfo_children(): w.destroy()
+        
+        # 画面切り替え時、特定の画面なら動的に要素をリフレッシュする
+        if screen_key == "memo":
+            self.draw_tabs()
+            self.load_current_memo_text()
+        elif screen_key == "todo":
+            self.refresh_todo()
+        elif screen_key == "calendar":
+            self.draw_calendar()
+        elif screen_key == "vault_inside":
+            self.refresh_vault()
 
-    def create_styled_input_dialog(self, title, prompt, initialvalue="", show=""):
-        dialog = tk.Toplevel(self.root); dialog.title(title); dialog.geometry("400x250"); dialog.configure(bg=self.colors["bg_base"]); dialog.transient(self.root); dialog.grab_set()
-        res = {"value": None}; main_f = tk.Frame(dialog, bg=self.colors["card_bg"], padx=20, pady=20); main_f.pack(expand=True, fill="both", padx=15, pady=15)
-        tk.Label(main_f, text=prompt, font=self.FONT_MAIN, bg=self.colors["card_bg"], fg=self.colors["text_main"]).pack(pady=10)
-        entry = tk.Entry(main_f, font=self.FONT_MAIN, width=25, bg="white", fg=self.colors["text_main"], insertbackground="black", borderwidth=0, highlightthickness=1, highlightbackground=self.colors["neutral"], show=show)
-        entry.insert(0, initialvalue); entry.pack(pady=10, ipady=5); entry.focus_force()
-        def ok(e=None): res["value"] = entry.get(); dialog.destroy()
-        self.styled_button(main_f, "決定", ok, self.colors["primary"]).pack(pady=10)
-        dialog.bind("<Return>", ok); self.root.wait_window(dialog)
-        return res["value"]
+        widget = self.screens[screen_key]
+        self.stacked_widget.setCurrentWidget(widget)
 
-    def show_selector(self):
-        self.clear_frame()
-        tk.Label(self.container, text="多機能メモツール", font=self.FONT_TITLE, bg=self.colors["bg_base"], fg=self.colors["primary"]).pack(pady=60)
-        menu = tk.Frame(self.container, bg=self.colors["bg_base"]); menu.pack()
-        opts = [("⏲ タイマー", self.show_timer, self.colors["primary"]), ("📝 TO DO リスト", self.show_todo, self.colors["accent"]), ("📄 メモ", self.show_memo, self.colors["success"]), ("📅 カレンダー", self.show_calendar, self.colors["neutral"]), ("🔒 セキュリティ強化メモ", self.show_vault, self.colors["danger"])]
-        for t, c, col in opts: self.styled_button(menu, t, c, col, width=25).pack(pady=10)
+    def back_to_selector(self):
+        self.save_all_data()
+        if hasattr(self, 'memo_text_widget'):
+            self.save_memo_content()
+        self.stacked_widget.setCurrentWidget(self.screens["selector"])
 
-    # --- タイマー ---
-    
-    def show_timer(self):
-        self.clear_frame()
-        self.styled_button(self.container, "戻る", self.show_selector, self.colors["tab_inactive"]).pack(anchor="w", padx=20, pady=20)
-        self.timer_display = tk.Label(self.container, text="00:00", font=("Consolas", 80, "bold"), bg=self.colors["bg_base"], fg=self.colors["text_main"])
-        self.timer_display.pack(pady=40)
-        in_f = tk.Frame(self.container, bg=self.colors["bg_base"]); in_f.pack()
-        self.e_min = tk.Entry(in_f, width=3, font=("Consolas", 24), bg="white", fg=self.colors["text_main"], justify="center", bd=0, highlightthickness=1, highlightbackground=self.colors["primary"]); self.e_min.insert(0, "0"); self.e_min.pack(side="left", padx=5)
-        self.e_sec = tk.Entry(in_f, width=3, font=("Consolas", 24), bg="white", fg=self.colors["text_main"], justify="center", bd=0, highlightthickness=1, highlightbackground=self.colors["primary"]); self.e_sec.insert(0, "00"); self.e_sec.pack(side="left", padx=5)
-        sound_f = tk.Frame(self.container, bg=self.colors["bg_base"]); sound_f.pack(pady=25)
-        self.sound_var = tk.StringVar(value="📢 警告音")
-        opt = tk.OptionMenu(sound_f, self.sound_var, *self.sounds.keys())
-        opt.config(font=self.FONT_MAIN, bg=self.colors["primary"], fg="white", highlightthickness=0, bd=0, width=12)
-        opt["menu"].config(bg="white", fg=self.colors["text_main"])
-        opt.pack(side="left", padx=10)
-        self.styled_button(sound_f, "♪ 試聴", self.preview_sound, self.colors["neutral"], pady=5).pack(side="left")
-        btns = tk.Frame(self.container, bg=self.colors["bg_base"]); btns.pack(pady=20)
-        self.styled_button(btns, "スタート", self.start_timer, self.colors["primary"]).pack(side="left", padx=10)
-        self.styled_button(btns, "ストップ", self.stop_timer, self.colors["danger"]).pack(side="left", padx=10)
-        self.styled_button(btns, "リセット", self.reset_timer, self.colors["neutral"]).pack(side="left", padx=10)
+    def create_all_screens(self):
+        # 起動時にすべての画面パーツを生成して登録しておくことで遷移バグを完全解消
+        self.create_selector_screen()
+        self.create_timer_screen()
+        self.create_todo_screen()
+        self.create_memo_screen()
+        self.create_calendar_screen()
+        self.create_vault_auth_screen()
+        self.create_vault_inside_screen()
+
+    # --- メニューセレクター画面 ---
+    def create_selector_screen(self):
+        screen = QWidget()
+        screen.setStyleSheet(f"background-color: {self.colors['bg_base']};")
+
+        outer_layout = QVBoxLayout(screen)
+        outer_layout.setAlignment(Qt.AlignCenter)
+
+        container = QWidget()
+        container.setMaximumWidth(800)
+        container.setMinimumWidth(500)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(0)
+
+        title = QLabel("Multi Memo")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet(f"""
+            color: {self.colors['primary']};
+            font-size: 36px;
+            font-weight: 700;
+            padding-bottom: 4px;
+        """)
+        layout.addWidget(title)
+
+        subtitle = QLabel("多機能メモツール")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 15px; padding-bottom: 32px;")
+        layout.addWidget(subtitle)
+
+        grid = QGridLayout()
+        grid.setSpacing(16)
+
+        opts = [
+            ("⏲", "タイマー", "時間を管理", lambda: self.change_screen("timer"), self.colors["primary"]),
+            ("📝", "TO DO", "タスク管理", lambda: self.change_screen("todo"), self.colors["accent"]),
+            ("📄", "メモ", "テキスト入力", lambda: self.change_screen("memo"), self.colors["success"]),
+            ("📅", "カレンダー", "予定を記録", lambda: self.change_screen("calendar"), self.colors["neutral"]),
+        ]
+
+        for idx, (icon, label, desc, slot, color) in enumerate(opts):
+            btn = QPushButton(f"{icon}\n{label}")
+            btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setMinimumHeight(160)
+            btn.setMinimumWidth(180)
+            btn.setToolTip(desc)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.colors['card_bg']};
+                    color: {color};
+                    font-size: 24px;
+                    font-weight: 700;
+                    border: 2px solid #45475A;
+                    border-radius: 22px;
+                    padding: 24px;
+                }}
+                QPushButton:hover {{
+                    background-color: #45475A;
+                    border-color: {color};
+                }}
+            """)
+            btn.clicked.connect(slot)
+            grid.addWidget(btn, idx // 2, idx % 2)
+
+        layout.addLayout(grid)
+        layout.addSpacing(18)
+
+        vault_card = QPushButton("🔒\nセキュリティメモ")
+        vault_card.setCursor(QCursor(Qt.PointingHandCursor))
+        vault_card.setMinimumHeight(160)
+        vault_card.setMinimumWidth(180)
+        vault_card.setToolTip("大切な情報を安全に保存")
+        vault_card.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['card_bg']};
+                color: {self.colors['danger']};
+                font-size: 24px;
+                font-weight: 700;
+                border: 2px solid #45475A;
+                border-radius: 22px;
+                padding: 24px;
+            }}
+            QPushButton:hover {{
+                background-color: #45475A;
+                border-color: {self.colors['danger']};
+            }}
+        """)
+        vault_card.clicked.connect(self.handle_vault_navigation)
+
+        grid.addWidget(vault_card, 2, 0, 1, 2)
+        layout.addStretch()
+        outer_layout.addWidget(container)
+        self.stacked_widget.addWidget(screen)
+        self.screens["selector"] = screen
+
+    # --- 1. タイマー機能 ---
+    def create_timer_screen(self):
+        screen = QWidget()
+        layout = QVBoxLayout(screen)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(0)
+
+        back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
+        back_btn.clicked.connect(self.back_to_selector)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
+
+        layout.addStretch(2)
+
+        self.timer_display = QLabel("00:00")
+        self.timer_display.setStyleSheet(f"""
+            font-family: 'Consolas', 'SF Mono', monospace;
+            font-size: 96px;
+            font-weight: 700;
+            color: {self.colors['primary']};
+        """)
+        self.timer_display.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.timer_display)
+
+        layout.addSpacing(24)
+
+        in_f = QWidget()
+        in_layout = QHBoxLayout(in_f)
+        in_layout.setAlignment(Qt.AlignCenter)
+        in_layout.setSpacing(8)
+
+        self.e_min = QLineEdit("0")
+        self.e_sec = QLineEdit("00")
+        for entry in (self.e_min, self.e_sec):
+            entry.setFixedSize(80, 52)
+            entry.setAlignment(Qt.AlignCenter)
+            entry.setStyleSheet(f"""
+                font-family: 'Consolas', monospace;
+                font-size: 24px;
+                font-weight: 600;
+                border: 2px solid #45475A;
+                border-radius: 12px;
+                background: {self.colors['card_bg']};
+                color: {self.colors['text_main']};
+            """)
+
+        min_lbl = QLabel("分")
+        sec_lbl = QLabel("秒")
+
+        for l in (min_lbl, sec_lbl):
+            l.setFixedWidth(24)
+            l.setAlignment(Qt.AlignCenter)
+            l.setStyleSheet("""
+                font-size:16px;
+                font-weight:bold;
+                border:none;
+            """)
+
+        in_layout.addWidget(self.e_min)
+        in_layout.addWidget(min_lbl)
+        in_layout.addSpacing(16)
+        in_layout.addWidget(self.e_sec)
+        in_layout.addWidget(sec_lbl)
+        layout.addWidget(in_f)
+
+        layout.addSpacing(16)
+
+        sound_f = QWidget()
+        sound_layout = QHBoxLayout(sound_f)
+        sound_layout.setAlignment(Qt.AlignCenter)
+        sound_layout.setSpacing(10)
+        self.sound_combo = QComboBox()
+        self.sound_combo.addItems(list(self.sounds.keys()))
+        self.sound_combo.setFixedWidth(160)
+        self.sound_combo.setFixedHeight(40)
+        preview_btn = StyledButton("♪ 試聴", self.colors["neutral"], compact=True)
+        preview_btn.clicked.connect(self.preview_sound)
+        sound_layout.addWidget(self.sound_combo)
+        sound_layout.addWidget(preview_btn)
+        layout.addWidget(sound_f)
+
+        layout.addStretch(3)
+
+        # 操作ボタンを下部に固定配置
+        btn_bar = QWidget()
+        btn_bar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 16px;
+                border: 1px solid #45475A;
+            }}
+        """)
+        btn_layout = QHBoxLayout(btn_bar)
+        btn_layout.setContentsMargins(12, 12, 12, 12)
+        btn_layout.setSpacing(10)
+
+        start_btn = StyledButton("▶ スタート", self.colors["primary"])
+        start_btn.clicked.connect(self.start_timer)
+        stop_btn = StyledButton("■ ストップ", self.colors["danger"])
+        stop_btn.clicked.connect(self.stop_timer)
+        reset_btn = StyledButton("↺ リセット", self.colors["neutral"])
+        reset_btn.clicked.connect(self.reset_timer)
+
+        for b in (start_btn, stop_btn, reset_btn):
+            b.setFixedHeight(52)
+            btn_layout.addWidget(b)
+
+        layout.addWidget(btn_bar)
+        self.stacked_widget.addWidget(screen)
+        self.screens["timer"] = screen
 
     def preview_sound(self):
-        s_target = self.sounds[self.sound_var.get()]
-        winsound.PlaySound(s_target, winsound.SND_ALIAS | winsound.SND_ASYNC)
+        if HAS_WINSOUND:
+            target = self.sounds[self.sound_combo.currentText()]
+            winsound.PlaySound(target, winsound.SND_ALIAS | winsound.SND_ASYNC)
 
     def start_timer(self):
-        if self.timer_running: return
+        if self.timer_worker and self.timer_worker.isRunning():
+            return
         try:
-            self.remaining_seconds = int(self.e_min.get()) * 60 + int(self.e_sec.get())
-            if self.remaining_seconds <= 0: return
-            self.timer_running = True
-            threading.Thread(target=self.run_timer_loop, daemon=True).start()
-        except: pass
+            seconds = int(self.e_min.text()) * 60 + int(self.e_sec.text())
+            if seconds <= 0:
+                return
+            
+            self.timer_worker = TimerWorker(seconds)
+            self.timer_worker.tick_signal.connect(self.update_timer_display)
+            self.timer_worker.timeout_signal.connect(self.timer_timeout)
+            self.timer_worker.start()
+        except ValueError:
+            pass
 
-    def run_timer_loop(self):
-        while self.remaining_seconds > 0 and self.timer_running:
-            time.sleep(1); self.remaining_seconds -= 1
-            self.root.after(0, lambda: self.timer_display.config(text=f"{self.remaining_seconds//60:02d}:{self.remaining_seconds%60:02d}"))
-        if self.remaining_seconds == 0 and self.timer_running:
-            self.timer_running = False
-            s_target = self.sounds[self.sound_var.get()]
-            winsound.PlaySound(s_target, winsound.SND_ALIAS | winsound.SND_ASYNC | winsound.SND_LOOP)
-            messagebox.showinfo("Time Up", "時間になりました！")
+    def update_timer_display(self, secs):
+        self.timer_display.setText(f"{secs//60:02d}:{secs%60:02d}")
+
+    def timer_timeout(self):
+        self.timer_display.setText("00:00")
+        if HAS_WINSOUND:
+            target = self.sounds[self.sound_combo.currentText()]
+            winsound.PlaySound(target, winsound.SND_ALIAS | winsound.SND_ASYNC | winsound.SND_LOOP)
+        QMessageBox.information(self, "Time Up", "時間になりました！")
+        if HAS_WINSOUND:
             winsound.PlaySound(None, winsound.SND_PURGE)
 
-    def stop_timer(self): 
-        self.timer_running = False
-        winsound.PlaySound(None, winsound.SND_PURGE)
+    def stop_timer(self):
+        if self.timer_worker:
+            self.timer_worker.stop()
+        if HAS_WINSOUND:
+            winsound.PlaySound(None, winsound.SND_PURGE)
 
     def reset_timer(self):
         self.stop_timer()
-        self.remaining_seconds = 0
-        self.timer_display.config(text="00:00")
-        self.e_min.delete(0, tk.END); self.e_min.insert(0, "0")
-        self.e_sec.delete(0, tk.END); self.e_sec.insert(0, "00")
+        self.timer_display.setText("00:00")
+        self.e_min.setText("0")
+        self.e_sec.setText("00")
 
-    # --- メモ帳 ---
-    
-    def show_memo(self):
-        self.clear_frame()
-        self.styled_button(self.container, "戻る", self.show_selector, self.colors["tab_inactive"]).pack(anchor="w", padx=20, pady=10)
-        top_bar = tk.Frame(self.container, bg=self.colors["bg_base"]); top_bar.pack(fill="x", padx=20)
-        tk.Label(top_bar, text="右クリック: フォルダを削除", font=("Segoe UI", 9), bg=self.colors["bg_base"], fg=self.colors["text_sub"]).pack(side="left")
-        self.styled_button(top_bar, "新しいフォルダを作成", self.add_folder, self.colors["accent"], pady=5).pack(side="right")
-        self.tab_container = tk.Frame(self.container, bg=self.colors["bg_base"]); self.tab_container.pack(fill="x", padx=20)
-        self.draw_tabs()
-        self.memo_text = tk.Text(self.container, font=("Segoe UI", 12), bg="white", fg=self.colors["text_main"], padx=20, pady=20, relief="flat", insertbackground="black", undo=True, highlightthickness=1, highlightbackground=self.colors["primary"])
-        self.memo_text.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        self.memo_text.insert(1.0, self.memo_data.get(self.current_memo_folder, "")); self.memo_text.bind("<KeyRelease>", self.save_memo_on_key)
+
+    # --- 2. メモ帳機能 ---
+    def create_memo_screen(self):
+        screen = QWidget()
+        layout = QVBoxLayout(screen)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        # ヘッダー: 戻るボタンのみ（シンプル）
+        back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
+        back_btn.clicked.connect(self.back_to_selector)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
+
+        # タブ行: フォルダタブ + 新規ボタンを同じ行に
+        tab_row = QWidget()
+        tab_row_layout = QHBoxLayout(tab_row)
+        tab_row_layout.setContentsMargins(0, 0, 0, 0)
+        tab_row_layout.setSpacing(6)
+
+        tab_scroll = QScrollArea()
+        tab_scroll.setFixedHeight(42)
+        tab_scroll.setWidgetResizable(True)
+        tab_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        tab_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        tab_scroll.setStyleSheet("border: none; background: transparent;")
+
+        self.tab_widget = QWidget()
+        self.tab_layout = QHBoxLayout(self.tab_widget)
+        self.tab_layout.setContentsMargins(0, 0, 0, 0)
+        self.tab_layout.setSpacing(6)
+        self.tab_layout.setAlignment(Qt.AlignLeft)
+        tab_scroll.setWidget(self.tab_widget)
+        tab_row_layout.addWidget(tab_scroll)
+
+        add_btn = QPushButton("+")
+        add_btn.setFixedSize(40, 40)
+        add_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['accent']};
+                color: #1E1E2E;
+                font-size: 20px;
+                font-weight: 700;
+                border: none;
+                border-radius: 20px;
+            }}
+            QPushButton:hover {{
+                background-color: {StyledButton.lighten(None, self.colors['accent'])};
+            }}
+        """)
+        add_btn.clicked.connect(self.add_folder)
+        tab_row_layout.addWidget(add_btn)
+        layout.addWidget(tab_row)
+
+        # テキストエリア（メイン領域、最大限広く）
+        self.memo_text_widget = QTextEdit()
+        self.memo_text_widget.setFont(QFont("Meiryo UI", 15))
+        self.memo_text_widget.setPlaceholderText("ここにメモを入力...")
+        self.memo_text_widget.textChanged.connect(self.save_memo_content)
+        layout.addWidget(self.memo_text_widget, stretch=1)
+
+        # 下部ツールバー: フォルダ操作
+        bottom_bar = QWidget()
+        bottom_bar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 12px;
+                border: 1px solid #45475A;
+            }}
+        """)
+        bottom_layout = QHBoxLayout(bottom_bar)
+        bottom_layout.setContentsMargins(12, 8, 12, 8)
+        bottom_layout.setSpacing(8)
+
+        rename_btn = StyledButton("✏ 名前変更", self.colors["primary"], compact=True)
+        rename_btn.clicked.connect(self.rename_current_folder)
+        bottom_layout.addWidget(rename_btn)
+        bottom_layout.addStretch()
+
+        hint_lbl = QLabel("タブ右クリックで削除")
+        hint_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 12px; border: none;")
+        bottom_layout.addWidget(hint_lbl)
+
+        layout.addWidget(bottom_bar)
+
+        self.stacked_widget.addWidget(screen)
+        self.screens["memo"] = screen
 
     def draw_tabs(self):
-        for w in self.tab_container.winfo_children(): w.destroy()
+        while self.tab_layout.count():
+            child = self.tab_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
         for name in self.memo_data.keys():
-            is_active = (name == self.current_memo_folder); 
+            is_active = (name == self.current_memo_folder)
             bg = self.colors["tab_active"] if is_active else self.colors["tab_inactive"]
-            fg = "white" if is_active else self.colors["text_main"]
-            lbl = tk.Label(self.tab_container, text=name.upper(), font=self.FONT_TAB, bg=bg, fg=fg, padx=15, pady=8, cursor="hand2")
-            lbl.pack(side="left", padx=2, pady=(5, 0)); lbl.bind("<Button-1>", lambda e, n=name: self.change_folder(n)); lbl.bind("<Button-3>", lambda e, n=name: self.delete_folder(n))
+            fg = "#1E1E2E" if is_active else self.colors["text_sub"]
+
+            btn = QPushButton(name)
+            btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setFixedHeight(40)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {bg};
+                    color: {fg};
+                    font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+                    font-size: 14px;
+                    font-weight: 600;
+                    border-radius: 20px;
+                    padding: 8px 20px;
+                    border: none;
+                }}
+                QPushButton:hover {{
+                    background-color: {'#45475A' if not is_active else bg};
+                }}
+            """)
+            btn.clicked.connect(lambda checked=False, n=name: self.change_folder(n))
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(lambda pos, n=name: self.delete_folder(n))
+
+            self.tab_layout.addWidget(btn)
+
+    def load_current_memo_text(self):
+        try:
+            self.memo_text_widget.textChanged.disconnect(self.save_memo_content)
+        except RuntimeError:
+            pass
+        self.memo_text_widget.setPlainText(self.memo_data.get(self.current_memo_folder, ""))
+        self.memo_text_widget.textChanged.connect(self.save_memo_content)
 
     def change_folder(self, name):
-        self.save_memo_content(); self.current_memo_folder = name; self.memo_text.delete(1.0, tk.END); self.memo_text.insert(1.0, self.memo_data.get(name, "")); self.draw_tabs()
+        self.current_memo_folder = name
+        self.draw_tabs()
+        self.load_current_memo_text()
+
+    def save_memo_content(self):
+        if hasattr(self, 'memo_text_widget'):
+            self.memo_data[self.current_memo_folder] = self.memo_text_widget.toPlainText()
 
     def add_folder(self):
-        res = self.create_styled_input_dialog("新しいフォルダ", "フォルダ名を入力")
-        if res and res not in self.memo_data: self.memo_data[res] = ""; self.change_folder(res)
+        dialog = StyledInputDialog("新しいフォルダ", "フォルダ名を入力してください", parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            res = dialog.get_value().strip()
+            if res and res not in self.memo_data:
+                self.memo_data[res] = ""
+                self.current_memo_folder = res
+                self.draw_tabs()
+                self.load_current_memo_text()
+
+    def rename_current_folder(self):
+        old_name = self.current_memo_folder
+        dialog = StyledInputDialog("フォルダ名変更", f"「{old_name}」の新しい名前を入力", old_name, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            res = dialog.get_value().strip()
+            if res and res != old_name:
+                if res in self.memo_data:
+                    QMessageBox.warning(self, "警告", "既に同じ名前のフォルダが存在します")
+                    return
+                new_memo_data = {}
+                for k, v in self.memo_data.items():
+                    if k == old_name:
+                        new_memo_data[res] = v
+                    else:
+                        new_memo_data[k] = v
+                self.memo_data = new_memo_data
+                self.current_memo_folder = res
+                self.draw_tabs()
 
     def delete_folder(self, name):
-        if len(self.memo_data) <= 1: messagebox.showwarning("警告", "既存のメインフォルダは削除できません"); return
-        if messagebox.askyesno("Confirm", f"フォルダ「{name}」を削除しますか？"):
+        if len(self.memo_data) <= 1:
+            QMessageBox.warning(self, "警告", "既存 of メインフォルダは削除できません")
+            return
+        
+        ret = QMessageBox.question(self, "確認", f"フォルダ「{name}」を削除しますか？", QMessageBox.Yes | QMessageBox.No)
+        if ret == QMessageBox.Yes:
             del self.memo_data[name]
-            if self.current_memo_folder == name: self.current_memo_folder = list(self.memo_data.keys())[0]
-            self.change_folder(self.current_memo_folder)
+            if self.current_memo_folder == name:
+                self.current_memo_folder = list(self.memo_data.keys())[0]
+            self.draw_tabs()
+            self.load_current_memo_text()
 
-    def save_memo_on_key(self, e): self.save_memo_content(); self.save_all_data()
-    def save_memo_content(self):
-        if self.current_memo_folder in self.memo_data: self.memo_data[self.current_memo_folder] = self.memo_text.get(1.0, "end-1c")
 
-    # --- セキュリティ強化メモ ---
-    
-    def show_vault(self):
+    # --- 3. セキュリティ強化メモ (Vault) ---
+    def handle_vault_navigation(self):
         if self.is_authenticated:
-            self.clear_frame()
-            self.styled_button(self.container, "ログアウト & 戻る", self.vault_logout, self.colors["tab_inactive"]).pack(anchor="w", padx=20, pady=10)
-            
-            f_card = tk.Frame(self.container, bg=self.colors["card_bg"], padx=20, pady=20); f_card.pack(fill="both", expand=True, padx=20, pady=10)
-            # アクセントカラーのグリーンを使用
-            self.styled_button(f_card, "+ メモを追加", self.add_vault_item, self.colors["accent"]).pack(pady=10)
-            self.vault_list = tk.Frame(f_card, bg=self.colors["card_bg"]); self.vault_list.pack(fill="both", expand=True); self.refresh_vault()
+            self.change_screen("vault_inside")
             return
 
         if not self.master_hash:
@@ -240,149 +794,534 @@ class MultiApp:
             return
 
         if self.birth_hash is None:
-            b1 = self.create_styled_input_dialog("初期設定", "リセット用の生年月日を登録してください\n(8桁: 19950510等)")
-            if b1 and len(b1) == 8 and b1.isdigit():
-                self.birth_hash = hashlib.sha256(b1.encode()).hexdigest()
-                self.save_all_data()
-                messagebox.showinfo("成功", "生年月日を登録しました。")
-                self.show_vault_auth_screen()
-            else:
-                messagebox.showwarning("警告", "正しい形式(8桁の数字)で入力してください。")
-                self.show_selector()
+            dialog = StyledInputDialog("初期設定", "リセット用の生年月日を登録してください\n(8桁: 19950510等)", parent=self)
+            if dialog.exec_() == QDialog.Accepted:
+                b1 = dialog.get_value().strip()
+                if b1 and len(b1) == 8 and b1.isdigit():
+                    self.birth_hash = hashlib.sha256(b1.encode()).hexdigest()
+                    self.save_all_data()
+                    QMessageBox.information(self, "成功", "生年月日を登録しました。")
+                    self.change_screen("vault_auth")
+                else:
+                    QMessageBox.warning(self, "警告", "正しい形式(8桁の数字)で入力してください。")
+                    self.back_to_selector()
             return
 
-        self.show_vault_auth_screen()
+        self.change_screen("vault_auth")
 
     def setup_vault_first_time(self):
-        p1 = self.create_styled_input_dialog("設定", "新しいパスワード", show="*")
-        if not p1: self.show_selector(); return
-        b1 = self.create_styled_input_dialog("設定", "生年月日 (8桁: 19950510等)")
-        if b1 and len(b1) == 8 and b1.isdigit():
-            self.master_hash = hashlib.sha256(p1.encode()).hexdigest()
-            self.birth_hash = hashlib.sha256(b1.encode()).hexdigest()
-            self.save_all_data()
-            messagebox.showinfo("成功", "初期設定が完了しました。")
-            self.show_vault()
-        else:
-            messagebox.showerror("エラー", "生年月日は8桁の数字で入力してください。")
-            self.show_selector()
-
-    def show_vault_auth_screen(self):
-        self.clear_frame()
-        self.styled_button(self.container, "戻る", self.show_selector, self.colors["tab_inactive"]).pack(anchor="w", padx=20, pady=10)
-        auth_f = tk.Frame(self.container, bg=self.colors["card_bg"], padx=40, pady=40)
-        auth_f.pack(pady=100)
-        tk.Label(auth_f, text="パスワードを入力してください", font=self.FONT_BUTTON, bg=self.colors["card_bg"], fg=self.colors["text_main"]).pack(pady=10)
-        pw_entry = tk.Entry(auth_f, font=self.FONT_MAIN, show="*", bg="white", fg=self.colors["text_main"], insertbackground="black", borderwidth=0, highlightthickness=1, highlightbackground=self.colors["primary"])
-        pw_entry.pack(pady=15, ipady=5); pw_entry.focus_force()
+        d1 = StyledInputDialog("設定", "新しいパスワード", is_password=True, parent=self)
+        if d1.exec_() != QDialog.Accepted or not d1.get_value():
+            self.back_to_selector()
+            return
         
-        def check_pw(e=None):
-            h = hashlib.sha256(pw_entry.get().encode()).hexdigest()
-            if h == self.master_hash:
-                self.is_authenticated = True
-                self.show_vault()
+        d2 = StyledInputDialog("設定", "生年月日 (8桁: 19950510等)", parent=self)
+        if d2.exec_() == QDialog.Accepted:
+            b1 = d2.get_value().strip()
+            if b1 and len(b1) == 8 and b1.isdigit():
+                self.master_hash = hashlib.sha256(d1.get_value().encode()).hexdigest()
+                self.birth_hash = hashlib.sha256(b1.encode()).hexdigest()
+                self.save_all_data()
+                QMessageBox.information(self, "成功", "初期設定が完了しました。")
+                self.handle_vault_navigation()
             else:
-                messagebox.showerror("エラー", "パスワードが違います")
-        self.styled_button(auth_f, "ログイン", check_pw, self.colors["primary"], width=15).pack(pady=5)
-        reset_btn = tk.Label(auth_f, text="パスワードを忘れた場合はこちら (生年月日でリセット)", font=("Segoe UI", 9), bg=self.colors["card_bg"], fg=self.colors["text_sub"], cursor="hand2")
-        reset_btn.pack(pady=20)
-        reset_btn.bind("<Button-1>", lambda e: self.reset_vault_password())
-        self.root.bind("<Return>", check_pw)
+                QMessageBox.critical(self, "エラー", "生年月日は8桁の数字で入力してください。")
+                self.back_to_selector()
+
+    def create_vault_auth_screen(self):
+        screen = QWidget()
+        layout = QVBoxLayout(screen)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
+        back_btn.clicked.connect(self.back_to_selector)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
+
+        layout.addStretch()
+
+        auth_card = QWidget()
+        auth_card.setStyleSheet(f"""
+            background-color: {self.colors['card_bg']};
+            border-radius: 16px;
+            border: 1px solid #45475A;
+        """)
+        auth_card.setMaximumWidth(420)
+        auth_card.setMinimumWidth(300)
+        auth_layout = QVBoxLayout(auth_card)
+        auth_layout.setContentsMargins(32, 36, 32, 32)
+        auth_layout.setSpacing(18)
+        auth_layout.setAlignment(Qt.AlignCenter)
+
+        icon_lbl = QLabel("🔒")
+        icon_lbl.setStyleSheet("font-size: 40px; border: none;")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        auth_layout.addWidget(icon_lbl)
+
+        lbl = QLabel("パスワードを入力")
+        lbl.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {self.colors['text_main']}; border: none;")
+        lbl.setAlignment(Qt.AlignCenter)
+        auth_layout.addWidget(lbl)
+
+        self.pw_entry = QLineEdit()
+        self.pw_entry.setEchoMode(QLineEdit.Password)
+        self.pw_entry.setPlaceholderText("パスワード")
+        self.pw_entry.setFixedHeight(44)
+        auth_layout.addWidget(self.pw_entry)
+
+        login_btn = StyledButton("ログイン", self.colors["primary"])
+        login_btn.setFixedHeight(48)
+        login_btn.clicked.connect(self.check_vault_password)
+        auth_layout.addWidget(login_btn)
+
+        reset_btn = QPushButton("パスワードを忘れた方はこちら")
+        reset_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {self.colors['text_sub']};
+                font-size: 13px;
+                border: none;
+                background: transparent;
+                padding: 8px;
+            }}
+            QPushButton:hover {{
+                color: {self.colors['primary']};
+            }}
+        """)
+        reset_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        reset_btn.clicked.connect(self.reset_vault_password)
+        auth_layout.addWidget(reset_btn, alignment=Qt.AlignCenter)
+
+        layout.addWidget(auth_card, alignment=Qt.AlignCenter)
+        layout.addStretch()
+        self.stacked_widget.addWidget(screen)
+        self.screens["vault_auth"] = screen
+
+    def check_vault_password(self):
+        h = hashlib.sha256(self.pw_entry.text().encode()).hexdigest()
+        if h == self.master_hash:
+            self.is_authenticated = True
+            self.pw_entry.clear()
+            self.change_screen("vault_inside")
+        else:
+            QMessageBox.critical(self, "エラー", "パスワードが違います")
 
     def reset_vault_password(self):
-        b_input = self.create_styled_input_dialog("リセット", "登録した生年月日(8桁)を入力")
-        if not b_input: return
-        if hashlib.sha256(b_input.encode()).hexdigest() == self.birth_hash:
-            new_p = self.create_styled_input_dialog("リセット", "新しいパスワードを再設定", show="*")
-            if new_p:
-                self.master_hash = hashlib.sha256(new_p.encode()).hexdigest()
-                self.save_all_data()
-                messagebox.showinfo("成功", "パスワードを更新しました。")
-                self.is_authenticated = False
-                self.show_vault()
-        else:
-            messagebox.showerror("エラー", "生年月日が一致しません")
+        dialog = StyledInputDialog("リセット", "登録した生年月日(8桁)を入力", parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            if hashlib.sha256(dialog.get_value().encode()).hexdigest() == self.birth_hash:
+                new_p = StyledInputDialog("リセット", "新しいパスワードを再設定", is_password=True, parent=self)
+                if new_p.exec_() == QDialog.Accepted and new_p.get_value():
+                    self.master_hash = hashlib.sha256(new_p.get_value().encode()).hexdigest()
+                    self.save_all_data()
+                    QMessageBox.information(self, "成功", "パスワードを更新しました。")
+                    self.is_authenticated = False
+                    self.change_screen("vault_auth")
+            else:
+                QMessageBox.critical(self, "エラー", "生年月日が一致しません")
 
-    def vault_logout(self): self.is_authenticated = False; self.show_selector()
+    def create_vault_inside_screen(self):
+        screen = QWidget()
+        layout = QVBoxLayout(screen)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        def logout():
+            self.is_authenticated = False
+            self.back_to_selector()
+
+        # ヘッダー
+        back_btn = StyledButton("🔓 ログアウト", self.colors["btn_back"], compact=True)
+        back_btn.clicked.connect(logout)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
+
+        # リスト領域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+
+        self.vault_list_widget = QWidget()
+        self.vault_list_layout = QVBoxLayout(self.vault_list_widget)
+        self.vault_list_layout.setAlignment(Qt.AlignTop)
+        self.vault_list_layout.setSpacing(8)
+        self.vault_list_layout.setContentsMargins(4, 8, 4, 8)
+        scroll.setWidget(self.vault_list_widget)
+        layout.addWidget(scroll, stretch=1)
+
+        # 追加ボタンを下部固定
+        add_btn = StyledButton("＋ セキュリティメモを追加", self.colors["accent"])
+        add_btn.setFixedHeight(52)
+        add_btn.clicked.connect(self.add_vault_item)
+        layout.addWidget(add_btn)
+
+        self.stacked_widget.addWidget(screen)
+        self.screens["vault_inside"] = screen
+
     def add_vault_item(self):
-        t = self.create_styled_input_dialog("新規", "項目名")
-        if t: s = self.create_styled_input_dialog("新規", "メモを入力"); self.vault_items.append({"title": t, "pass": s, "show": False}); self.refresh_vault()
+        t_diag = StyledInputDialog("新規項目", "項目名を入力", parent=self)
+        if t_diag.exec_() == QDialog.Accepted and t_diag.get_value():
+            p_diag = StyledInputDialog("新規メモ", "暗号化メモを入力", parent=self)
+            if p_diag.exec_() == QDialog.Accepted:
+                self.vault_items.append({"title": t_diag.get_value(), "pass": p_diag.get_value(), "show": False})
+                self.refresh_vault()
 
     def refresh_vault(self):
-        for w in self.vault_list.winfo_children(): w.destroy()
-        for i, item in enumerate(self.vault_items):
-            f = tk.Frame(self.vault_list, bg="white", pady=10); f.pack(fill="x", pady=2)
-            tk.Label(f, text=f"  {item['title']}", bg="white", fg=self.colors["text_main"], width=15, anchor="w").pack(side="left", padx=10)
-            p_disp = item["pass"] if item.get("show") else "********"
-            tk.Label(f, text=p_disp, fg=self.colors["text_sub"], bg="white", width=20, font=("Consolas", 11)).pack(side="left")
-            btn_f = tk.Frame(f, bg="white"); btn_f.pack(side="right", padx=10)
-            v_btn = tk.Label(btn_f, text="表示", fg=self.colors["primary"], bg="white", cursor="hand2", font=("Segoe UI", 9, "bold")); v_btn.pack(side="left", padx=5); v_btn.bind("<Button-1>", lambda e, idx=i: [self.vault_items[idx].update({"show": not self.vault_items[idx]["show"]}), self.refresh_vault()])
-            del_btn = tk.Label(btn_f, text="削除", fg=self.colors["danger"], bg="white", cursor="hand2", font=("Segoe UI", 9, "bold")); del_btn.pack(side="left", padx=5); del_btn.bind("<Button-1>", lambda e, idx=i: [self.vault_items.pop(idx), self.refresh_vault()])
+        while self.vault_list_layout.count():
+            child = self.vault_list_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
-    # --- ToDo リスト ---
-    
-    def show_todo(self):
-        self.clear_frame()
-        self.styled_button(self.container, "戻る", self.show_selector, self.colors["tab_inactive"]).pack(anchor="w", padx=20, pady=20)
-        f_card = tk.Frame(self.container, bg=self.colors["card_bg"], padx=20, pady=20); f_card.pack(fill="both", expand=True, padx=20, pady=10)
-        self.styled_button(f_card, "+ タスクを追加", self.add_todo_item, self.colors["accent"]).pack(pady=10)
-        self.todo_list_frame = tk.Frame(f_card, bg=self.colors["card_bg"]); self.todo_list_frame.pack(fill="both", expand=True); self.refresh_todo()
+        for i, item in enumerate(self.vault_items):
+            row = QWidget()
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: {self.colors['card_bg']};
+                    border-radius: 12px;
+                    border: 1px solid #45475A;
+                }}
+            """)
+            row.setMinimumHeight(56)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(16, 10, 12, 10)
+            row_layout.setSpacing(10)
+
+            lbl_title = QLabel(item['title'])
+            lbl_title.setMinimumWidth(120)
+            lbl_title.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {self.colors['text_main']}; border: none;")
+
+            p_disp = item["pass"] if item.get("show") else "••••••••"
+            lbl_pass = QLabel(p_disp)
+            lbl_pass.setStyleSheet(f"font-family: 'Consolas', monospace; color: {self.colors['text_sub']}; font-size: 14px; border: none;")
+
+            row_layout.addWidget(lbl_title)
+            row_layout.addWidget(lbl_pass)
+            row_layout.addStretch()
+
+            def toggle_show(idx=i):
+                self.vault_items[idx]["show"] = not self.vault_items[idx]["show"]
+                self.refresh_vault()
+
+            def rename_item(idx=i):
+                d = StyledInputDialog("項目名変更", "新しい項目名を入力", self.vault_items[idx]["title"], parent=self)
+                if d.exec_() == QDialog.Accepted and d.get_value().strip():
+                    self.vault_items[idx]["title"] = d.get_value()
+                    self.refresh_vault()
+
+            def delete_item(idx=i):
+                ret = QMessageBox.question(self, "確認", f"「{self.vault_items[idx]['title']}」を削除しますか？", QMessageBox.Yes | QMessageBox.No)
+                if ret == QMessageBox.Yes:
+                    self.vault_items.pop(idx)
+                    self.refresh_vault()
+
+            action_style = """
+                QPushButton {{
+                    color: {color};
+                    font-weight: 600;
+                    font-size: 13px;
+                    background: transparent;
+                    border: 1px solid {color};
+                    border-radius: 8px;
+                    padding: 6px 12px;
+                    min-height: 32px;
+                }}
+                QPushButton:hover {{
+                    background: {color};
+                    color: #1E1E2E;
+                }}
+            """
+
+            v_btn = QPushButton("👁 表示" if not item.get("show") else "🙈 隠す")
+            v_btn.setStyleSheet(action_style.format(color=self.colors['primary']))
+            v_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            v_btn.clicked.connect(toggle_show)
+
+            e_btn = QPushButton("✏ 編集")
+            e_btn.setStyleSheet(action_style.format(color=self.colors['success']))
+            e_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            e_btn.clicked.connect(rename_item)
+
+            d_btn = QPushButton("🗑 削除")
+            d_btn.setStyleSheet(action_style.format(color=self.colors['danger']))
+            d_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            d_btn.clicked.connect(delete_item)
+
+            row_layout.addWidget(v_btn)
+            row_layout.addWidget(e_btn)
+            row_layout.addWidget(d_btn)
+
+            self.vault_list_layout.addWidget(row)
+        self.save_all_data()
+
+
+    # --- 4. TO DO リスト機能 ---
+    def create_todo_screen(self):
+        screen = QWidget()
+        layout = QVBoxLayout(screen)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # ヘッダー
+        back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
+        back_btn.clicked.connect(self.back_to_selector)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
+
+        # リスト領域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+
+        self.todo_list_widget = QWidget()
+        self.todo_list_layout = QVBoxLayout(self.todo_list_widget)
+        self.todo_list_layout.setAlignment(Qt.AlignTop)
+        self.todo_list_layout.setSpacing(8)
+        self.todo_list_layout.setContentsMargins(4, 8, 4, 8)
+        scroll.setWidget(self.todo_list_widget)
+        layout.addWidget(scroll, stretch=1)
+
+        # 追加ボタンを下部に固定（FABスタイル）
+        add_btn = StyledButton("＋ タスクを追加", self.colors["accent"])
+        add_btn.setFixedHeight(52)
+        add_btn.clicked.connect(self.add_todo_item)
+        layout.addWidget(add_btn)
+
+        self.stacked_widget.addWidget(screen)
+        self.screens["todo"] = screen
 
     def add_todo_item(self):
-        res = self.create_styled_input_dialog("タスク追加", "タスクを入力"); self.todo_items.append(res) if res else None; self.refresh_todo()
+        dialog = StyledInputDialog("タスク追加", "タスク内容を入力してください", parent=self)
+        if dialog.exec_() == QDialog.Accepted and dialog.get_value().strip():
+            self.todo_items.append(dialog.get_value().strip())
+            self.refresh_todo()
 
     def refresh_todo(self):
-        for w in self.todo_list_frame.winfo_children(): w.destroy()
-        for i, t in enumerate(self.todo_items):
-            f = tk.Frame(self.todo_list_frame, bg="white", pady=12); f.pack(fill="x", pady=5)
-            tk.Label(f, text=f"  {t}", font=self.FONT_MAIN, bg="white", fg=self.colors["text_main"]).pack(side="left")
-            done = tk.Label(f, text="完了 ", font=("Segoe UI", 9, "bold"), fg=self.colors["accent"], bg="white", cursor="hand2"); done.pack(side="right", padx=15); done.bind("<Button-1>", lambda e, idx=i: [self.todo_items.pop(idx), self.refresh_todo()])
+        while self.todo_list_layout.count():
+            child = self.todo_list_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
-    # --- カレンダー ---
-    
-    def show_calendar(self):
-        self.clear_frame()
-        self.styled_button(self.container, "戻る", self.show_selector, self.colors["tab_inactive"]).pack(anchor="w", padx=20, pady=10)
-        tk.Label(self.container, text="カレンダー", font=self.FONT_TITLE, bg=self.colors["bg_base"], fg=self.colors["primary"]).pack(pady=5)
-        
-        ctrl_f = tk.Frame(self.container, bg=self.colors["bg_base"]); ctrl_f.pack(pady=10)
-        self.styled_button(ctrl_f, "＜", self.prev_month, self.colors["primary"], pady=5).pack(side="left", padx=10)
-        self.cal_label = tk.Label(ctrl_f, text=f"{self.cur_year} / {self.cur_month}", font=("Segoe UI", 20, "bold"), bg=self.colors["bg_base"], fg=self.colors["text_main"], width=10)
-        self.cal_label.pack(side="left", padx=10)
-        self.styled_button(ctrl_f, "＞", self.next_month, self.colors["primary"], pady=5).pack(side="left", padx=10)
+        for i, task in enumerate(self.todo_items):
+            row = QWidget()
+            row.setStyleSheet(f"""
+                QWidget {{
+                    background-color: {self.colors['card_bg']};
+                    border-radius: 12px;
+                    border: 1px solid #45475A;
+                }}
+            """)
+            row.setFixedHeight(58)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(18, 10, 14, 10)
 
-        f_card = tk.Frame(self.container, bg=self.colors["card_bg"], padx=15, pady=15); f_card.pack(pady=10); self.calendar_frame = tk.Frame(f_card, bg=self.colors["card_bg"]); self.calendar_frame.pack(); self.draw_calendar()
+            lbl = QLabel(task)
+            lbl.setStyleSheet(f"font-size: 15px; color: {self.colors['text_main']}; border: none;")
+            row_layout.addWidget(lbl)
+            row_layout.addStretch()
+
+            done_btn = QPushButton("✓ 完了")
+            done_btn.setFixedHeight(36)
+            done_btn.setStyleSheet(f"""
+                QPushButton {{
+                    color: {self.colors['success']};
+                    font-weight: 600;
+                    font-size: 14px;
+                    background: transparent;
+                    border: 1px solid {self.colors['success']};
+                    border-radius: 8px;
+                    padding: 6px 16px;
+                }}
+                QPushButton:hover {{
+                    background: {self.colors['success']};
+                    color: #1E1E2E;
+                }}
+            """)
+            done_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            done_btn.clicked.connect(lambda checked=False, idx=i: [self.todo_items.pop(idx), self.refresh_todo()])
+            row_layout.addWidget(done_btn)
+
+            self.todo_list_layout.addWidget(row)
+        self.save_all_data()
+
+
+    # --- 5. カレンダー機能 ---
+    def create_calendar_screen(self):
+        screen = QWidget()
+        layout = QVBoxLayout(screen)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        back_btn = StyledButton("← 戻る", self.colors["btn_back"], compact=True)
+        back_btn.clicked.connect(self.back_to_selector)
+        layout.addWidget(back_btn, alignment=Qt.AlignLeft)
+
+        # 月ナビゲーション
+        ctrl_f = QWidget()
+        ctrl_f.setStyleSheet(f"""
+            QWidget {{
+                background-color: {self.colors['card_bg']};
+                border-radius: 12px;
+                border: 1px solid #45475A;
+            }}
+        """)
+        ctrl_layout = QHBoxLayout(ctrl_f)
+        ctrl_layout.setContentsMargins(8, 8, 8, 8)
+
+        prev_btn = QPushButton("◀  前月")
+        prev_btn.setFixedHeight(44)
+        prev_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        prev_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.colors['primary']};
+                font-size: 15px;
+                font-weight: 600;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{ background: #45475A; }}
+        """)
+        prev_btn.clicked.connect(self.prev_month)
+
+        self.cal_label = QLabel()
+        self.cal_label.setStyleSheet(f"""
+            font-size: 18px;
+            font-weight: 700;
+            color: {self.colors['text_main']};
+            border: none;
+        """)
+        self.cal_label.setAlignment(Qt.AlignCenter)
+
+        next_btn = QPushButton("次月  ▶")
+        next_btn.setFixedHeight(44)
+        next_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.colors['primary']};
+                font-size: 15px;
+                font-weight: 600;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{ background: #45475A; }}
+        """)
+        next_btn.clicked.connect(self.next_month)
+
+        ctrl_layout.addWidget(prev_btn)
+        ctrl_layout.addStretch()
+        ctrl_layout.addWidget(self.cal_label)
+        ctrl_layout.addStretch()
+        ctrl_layout.addWidget(next_btn)
+        layout.addWidget(ctrl_f)
+
+        # カレンダーグリッド
+        card = QWidget()
+        card.setStyleSheet(f"""
+            background-color: {self.colors['card_bg']};
+            border-radius: 14px;
+            border: 1px solid #45475A;
+            padding: 14px;
+        """)
+        self.calendar_grid_layout = QGridLayout(card)
+        self.calendar_grid_layout.setSpacing(5)
+        self.calendar_grid_layout.setAlignment(Qt.AlignCenter)
+        layout.addWidget(card, stretch=1)
+
+        self.stacked_widget.addWidget(screen)
+        self.screens["calendar"] = screen
 
     def draw_calendar(self):
-        self.cal_label.config(text=f"{self.cur_year} / {self.cur_month}")
-        for w in self.calendar_frame.winfo_children(): w.destroy()
-        days = ["月","火","水","木","金","土","日"]
-        for i, d in enumerate(days): tk.Label(self.calendar_frame, text=d, font=self.FONT_CAL, bg=self.colors["card_bg"], fg=self.colors["text_sub"]).grid(row=0, column=i, padx=10, pady=10)
-        cal = calendar.monthcalendar(self.cur_year, self.cur_month); today = datetime.now()
+        self.cal_label.setText(f"{self.cur_year}年 {self.cur_month}月")
+
+        while self.calendar_grid_layout.count():
+            child = self.calendar_grid_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        days = ["月", "火", "水", "木", "金", "土", "日"]
+        day_colors = [self.colors["text_sub"]] * 5 + ["#2563EB", "#DC2626"]
+
+        for i, d in enumerate(days):
+            lbl = QLabel(d)
+            lbl.setFont(QFont("Meiryo UI", 14, QFont.Bold))
+            lbl.setFixedHeight(46)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet(f"color: {day_colors[i]};")
+            self.calendar_grid_layout.addWidget(lbl, 0, i)
+
+        cal = calendar.monthcalendar(self.cur_year, self.cur_month)
+        today = datetime.now()
+
         for r, week in enumerate(cal):
             for c, day in enumerate(week):
-                if day == 0: continue
+                if day == 0:
+                    continue
                 key = f"{self.cur_year}-{self.cur_month}-{day}"
                 is_today = (day == today.day and self.cur_month == today.month and self.cur_year == today.year)
-                if is_today: bg = self.colors["primary"]; fg = "white"
-                elif key in self.calendar_notes: bg = self.colors["accent"]; fg = "white"
-                else: bg = "white"; fg = self.colors["text_main"]
-                btn = tk.Label(self.calendar_frame, text=str(day), font=self.FONT_CAL, bg=bg, fg=fg, width=5, height=2, cursor="hand2", highlightthickness=1, highlightbackground=self.colors["primary"]); btn.grid(row=r+1, column=c, padx=3, pady=3); btn.bind("<Button-1>", lambda e, d=day: self.edit_day_memo(d))
 
+                if is_today:
+                    bg, fg, border = self.colors["primary"], "#1E1E2E", "none"
+                elif key in self.calendar_notes:
+                    bg, fg, border = "#45475A", self.colors["accent"], f"2px solid {self.colors['accent']}"
+                else:
+                    bg, fg, border = self.colors["bg_base"], self.colors["text_main"], "1px solid #45475A"
+
+                btn = QPushButton(str(day))
+                btn.setFixedSize(64, 48)
+                btn.setCursor(QCursor(Qt.PointingHandCursor))
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {bg};
+                        color: {fg};
+                        font-size: 14px;
+                        font-weight: 600;
+                        border: {border};
+                        border-radius: 10px;
+                    }}
+                    QPushButton:hover {{
+                        background-color: #45475A;
+                        color: {self.colors['primary']};
+                    }}
+                """)
+                btn.clicked.connect(lambda checked=False, d=day: self.edit_day_memo(d))
+                self.calendar_grid_layout.addWidget(btn, r + 1, c)
 
     def prev_month(self):
-        if self.cur_month == 1: self.cur_month = 12; self.cur_year -= 1
-        else: self.cur_month -= 1
+        if self.cur_month == 1:
+            self.cur_month = 12
+            self.cur_year -= 1
+        else:
+            self.cur_month -= 1
         self.draw_calendar()
 
     def next_month(self):
-        if self.cur_month == 12: self.cur_month = 1; self.cur_year += 1
-        else: self.cur_month += \
+        if self.cur_month == 12:
+            self.cur_month = 1
+            self.cur_year += 1
+        else:
+            self.cur_month += 1
         self.draw_calendar()
 
     def edit_day_memo(self, day):
-        key = f"{self.cur_year}-{self.cur_month}-{day}"; old = self.calendar_notes.get(key, ""); res = self.create_styled_input_dialog(f"DATE: {day}", "メモ", old)
-        if res is not None: [self.calendar_notes.pop(key) if res.strip()=="" else self.calendar_notes.update({key: res}), self.draw_calendar()]
+        key = f"{self.cur_year}-{self.cur_month}-{day}"
+        old_val = self.calendar_notes.get(key, "")
+        
+        dialog = StyledInputDialog(f"DATE: {day}", "メモを入力", old_val, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            res = dialog.get_value().strip()
+            if res == "":
+                self.calendar_notes.pop(key, None)
+            else:
+                self.calendar_notes[key] = res
+            self.draw_calendar()
+
+
+class MainWindowContainer(MultiApp):
+    def closeEvent(self, event):
+        self.stop_timer()
+        self.save_all_data()
+        event.accept()
+
 
 if __name__ == "__main__":
-    root = tk.Tk(); app = MultiApp(root); root.protocol("WM_DELETE_WINDOW", lambda: [app.save_all_data(), root.destroy()]); root.mainloop()
+    app = QApplication(sys.argv)
+    window = MainWindowContainer()
+    window.show()
+    sys.exit(app.exec_())
