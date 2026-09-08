@@ -604,26 +604,18 @@ class MultiApp(QMainWindow):
         back_btn.clicked.connect(self.back_to_selector)
         layout.addWidget(back_btn, alignment=Qt.AlignLeft)
 
-        # タブ行: フォルダタブ + 新規ボタンを同じ行に
-        tab_row = QWidget()
-        tab_row_layout = QHBoxLayout(tab_row)
-        tab_row_layout.setContentsMargins(0, 0, 0, 0)
-        tab_row_layout.setSpacing(6)
+        # フォルダ選択行: ドロップダウン + 新規ボタン
+        folder_row = QWidget()
+        folder_row_layout = QHBoxLayout(folder_row)
+        folder_row_layout.setContentsMargins(0, 0, 0, 0)
+        folder_row_layout.setSpacing(6)
 
-        tab_scroll = QScrollArea()
-        tab_scroll.setFixedHeight(42)
-        tab_scroll.setWidgetResizable(True)
-        tab_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        tab_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        tab_scroll.setStyleSheet("border: none; background: transparent;")
-
-        self.tab_widget = QWidget()
-        self.tab_layout = QHBoxLayout(self.tab_widget)
-        self.tab_layout.setContentsMargins(0, 0, 0, 0)
-        self.tab_layout.setSpacing(6)
-        self.tab_layout.setAlignment(Qt.AlignLeft)
-        tab_scroll.setWidget(self.tab_widget)
-        tab_row_layout.addWidget(tab_scroll)
+        self.folder_combo = QComboBox()
+        self.folder_combo.setFixedHeight(40)
+        self.folder_combo.setCursor(QCursor(Qt.PointingHandCursor))
+        self.folder_combo.setMaxVisibleItems(20)
+        self.folder_combo.currentIndexChanged.connect(self.on_folder_combo_changed)
+        folder_row_layout.addWidget(self.folder_combo, stretch=1)
 
         add_btn = QPushButton("+")
         add_btn.setFixedSize(40, 40)
@@ -642,8 +634,8 @@ class MultiApp(QMainWindow):
             }}
         """)
         add_btn.clicked.connect(self.add_folder)
-        tab_row_layout.addWidget(add_btn)
-        layout.addWidget(tab_row)
+        folder_row_layout.addWidget(add_btn)
+        layout.addWidget(folder_row)
 
         # テキストエリア（メイン領域、最大限広く）
         self.memo_text_widget = QTextEdit()
@@ -668,11 +660,12 @@ class MultiApp(QMainWindow):
         rename_btn = StyledButton("✏ 名前変更", self.colors["primary"], compact=True)
         rename_btn.clicked.connect(self.rename_current_folder)
         bottom_layout.addWidget(rename_btn)
-        bottom_layout.addStretch()
 
-        hint_lbl = QLabel("タブ右クリックで削除")
-        hint_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 12px; border: none;")
-        bottom_layout.addWidget(hint_lbl)
+        delete_btn = StyledButton("🗑 削除", self.colors["danger"], compact=True)
+        delete_btn.clicked.connect(lambda: self.delete_folder(self.current_memo_folder))
+        bottom_layout.addWidget(delete_btn)
+
+        bottom_layout.addStretch()
 
         layout.addWidget(bottom_bar)
 
@@ -680,39 +673,21 @@ class MultiApp(QMainWindow):
         self.screens["memo"] = screen
 
     def draw_tabs(self):
-        while self.tab_layout.count():
-            child = self.tab_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        # フォルダ一覧をドロップダウンに反映（シグナルを止めて再帰的な切り替えを防ぐ）
+        self.folder_combo.blockSignals(True)
+        self.folder_combo.clear()
+        self.folder_combo.addItems(list(self.memo_data.keys()))
+        idx = self.folder_combo.findText(self.current_memo_folder)
+        if idx >= 0:
+            self.folder_combo.setCurrentIndex(idx)
+        self.folder_combo.blockSignals(False)
 
-        for name in self.memo_data.keys():
-            is_active = (name == self.current_memo_folder)
-            bg = self.colors["tab_active"] if is_active else self.colors["tab_inactive"]
-            fg = "#1E1E2E" if is_active else self.colors["text_sub"]
-
-            btn = QPushButton(name)
-            btn.setCursor(QCursor(Qt.PointingHandCursor))
-            btn.setFixedHeight(40)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {bg};
-                    color: {fg};
-                    font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
-                    font-size: 14px;
-                    font-weight: 600;
-                    border-radius: 20px;
-                    padding: 8px 20px;
-                    border: none;
-                }}
-                QPushButton:hover {{
-                    background-color: {'#45475A' if not is_active else bg};
-                }}
-            """)
-            btn.clicked.connect(lambda checked=False, n=name: self.change_folder(n))
-            btn.setContextMenuPolicy(Qt.CustomContextMenu)
-            btn.customContextMenuRequested.connect(lambda pos, n=name: self.delete_folder(n))
-
-            self.tab_layout.addWidget(btn)
+    def on_folder_combo_changed(self, index):
+        if index < 0:
+            return
+        name = self.folder_combo.itemText(index)
+        if name and name != self.current_memo_folder:
+            self.change_folder(name)
 
     def load_current_memo_text(self):
         try:
@@ -762,7 +737,7 @@ class MultiApp(QMainWindow):
 
     def delete_folder(self, name):
         if len(self.memo_data) <= 1:
-            QMessageBox.warning(self, "警告", "既存 of メインフォルダは削除できません")
+            QMessageBox.warning(self, "警告", "最後のフォルダは削除できません")
             return
         
         ret = QMessageBox.question(self, "確認", f"フォルダ「{name}」を削除しますか？", QMessageBox.Yes | QMessageBox.No)
