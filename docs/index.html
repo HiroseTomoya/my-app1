@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MultiMemo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg: #EDF0F5;
+    --surface: #FFFFFF;
+    --surface-2: #F8FAFC;
+    --border: #E2E8F0;
+    --text: #0F172A;
+    --text-sub: #64748B;
+    --on-accent: #FFFFFF;
+
+    --primary: #4F46E5;   --primary-2: #6366F1;   --primary-3: #3730A3;
+    --accent:  #7C3AED;   --accent-2:  #A855F7;   --accent-3:  #5B21B6;
+    --success: #0D9488;   --success-2: #14B8A6;   --success-3: #0F5C54;
+    --warn:    #EA580C;   --warn-2:    #FB923C;   --warn-3:    #9A3412;
+    --danger:  #E11D48;   --danger-2:  #FB7185;   --danger-3:  #9F1239;
+
+    --shadow: 0 10px 24px -8px rgba(15, 23, 42, 0.18);
+    --radius-lg: 22px;
+    --radius-md: 14px;
+    --radius-sm: 9px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161f;
+      --surface: #1d2030;
+      --surface-2: #242739;
+      --border: #333853;
+      --text: #EEF1FB;
+      --text-sub: #9AA3C0;
+      --shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.55);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161f;
+    --surface: #1d2030;
+    --surface-2: #242739;
+    --border: #333853;
+    --text: #EEF1FB;
+    --text-sub: #9AA3C0;
+    --shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.55);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans JP', 'Segoe UI', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3, .display {
+    font-family: 'M PLUS Rounded 1c', 'Noto Sans JP', sans-serif;
+    text-wrap: balance;
+  }
+  button, input, textarea, select { font-family: inherit; }
+  button {
+    cursor: pointer;
+    /* Webフォントの行間指標のせいで文字がボタン内で上寄りに見えてしまうため、
+       中身をflexで真ん中揃えにして、フォントの計量に関係なく常に中央にする */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.25;
+    text-align: center;
+    /* タップした瞬間ぐっと沈むアニメーションを全ボタン共通で滑らかにする */
+    transition: transform 0.08s ease;
+  }
+  input[type="text"], input[type="password"], input[type="number"], textarea, select {
+    line-height: 1.4;
+  }
+
+  #app {
+    max-width: 640px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* --- Top bar --- */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 5;
+  }
+  #topbar.home { display: none; }
+  #back-btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-sub);
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: none;
+    transition: transform 0.08s ease, background 0.1s ease;
+  }
+  #back-btn:hover, #back-btn:active { background: var(--surface); color: var(--text); }
+  .screen-chip {
+    width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 19px;
+    box-shadow: var(--shadow);
+  }
+  #topbar h2 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #topbar .brand {
+    font-size: 21px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+  }
+  #topbar .brand .accent-m { color: var(--primary); }
+
+  main {
+    flex: 1;
+    padding: 4px 16px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .screen[hidden] { display: none; }
+  /* コンテンツが画面より短いとき、下に木目の背景だけが大きく余って
+     しまわないよう、その画面内で縦方向に中央寄せする */
+  #screen-home:not([hidden]), #screen-timer:not([hidden]),
+  #screen-calendar:not([hidden]), #screen-vault:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* --- Home: ノート帳風マストヘッド --- */
+  :root {
+    /* この用紙は常にクリーム色（デスクトップ版と同じ）で、ダーク/ライトの
+       切り替えに関係なく固定なので、文字色も専用トークンで固定する */
+    --paper-bg: #FFFDF6;
+    --paper-border: #EAE2CF;
+    --paper-rule: #D6E0F1;
+    --paper-margin: rgba(225, 29, 72, 0.42);
+    --paper-ring: #B9C2D6;
+    --paper-text: #0F172A;
+    --paper-text-sub: #64748B;
+  }
+  .masthead {
+    background: var(--paper-bg);
+    border: 1px solid var(--paper-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-top: 18px;
+  }
+  .mh-tabs { display: flex; gap: 6px; padding: 0 22px; }
+  .mh-tab { flex: 1; max-width: 44px; height: 14px; border-radius: 0 0 7px 7px; }
+  .mh-rings {
+    height: 20px;
+    background-image: radial-gradient(circle, var(--paper-ring) 3.5px, transparent 3.5px);
+    background-size: 30px 100%;
+    background-position: 24px center;
+    background-repeat: repeat-x;
+  }
+  .mh-body { display: flex; padding: 4px 20px 22px; gap: 14px; }
+  .mh-margin { width: 2px; background: var(--paper-margin); border-radius: 2px; flex-shrink: 0; margin-top: 4px; }
+  .mh-content { flex: 1; min-width: 0; }
+  .mh-date {
+    font-family: 'M PLUS Rounded 1c', sans-serif;
+    font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+    color: var(--paper-text-sub); margin-bottom: 2px;
+  }
+  .mh-title { margin: 0; font-size: 34px; font-weight: 800; color: var(--paper-text); line-height: 1.1; }
+  .mh-title .accent-m { color: var(--primary); }
+  .mh-highlight { width: 78%; max-width: 220px; height: 10px; background: #FDE68A; opacity: 0.75; margin: 2px 0 10px; border-radius: 2px; }
+  .mh-rule { height: 2px; background: var(--paper-rule); margin-bottom: 10px; }
+  .mh-sub { font-size: 13px; color: var(--paper-text-sub); }
+  .mh-pencil { font-size: 30px; align-self: flex-end; transform: rotate(8deg); flex-shrink: 0; }
+  @media (max-width: 380px) { .mh-title { font-size: 28px; } .mh-pencil { font-size: 24px; } }
+
+  /* --- Home: menu cards --- */
+  #home-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 6px;
+  }
+  #home-cards .wide { grid-column: 1 / -1; }
+  @media (max-width: 420px) {
+    #home-cards { grid-template-columns: 1fr; }
+  }
+  .menu-card {
+    border: none;
+    border-radius: var(--radius-lg);
+    padding: 20px 18px;
+    text-align: left;
+    color: var(--on-accent);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 96px;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  /* パソコン版のピル型ボタンと同じく、底に濃い同系色の縁を見せて
+     立体感を出し、押すとその縁が沈んで戻ることでタップしたことが
+     はっきりわかるようにする */
+  .menu-card:active { transform: translateY(3px) scale(0.99); }
+  .menu-card .icon {
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.22);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .menu-card .name { font-size: 18px; font-weight: 800; }
+  .menu-card .desc { font-size: 12.5px; opacity: 0.9; margin-top: 2px; }
+  .menu-card.c-primary { background: linear-gradient(135deg, var(--primary-2), var(--primary)); box-shadow: 0 5px 0 var(--primary-3), var(--shadow); }
+  .menu-card.c-accent  { background: linear-gradient(135deg, var(--accent-2), var(--accent));   box-shadow: 0 5px 0 var(--accent-3), var(--shadow); }
+  .menu-card.c-success { background: linear-gradient(135deg, var(--success-2), var(--success)); box-shadow: 0 5px 0 var(--success-3), var(--shadow); }
+  .menu-card.c-warn    { background: linear-gradient(135deg, var(--warn-2), var(--warn));       box-shadow: 0 5px 0 var(--warn-3), var(--shadow); }
+  .menu-card.c-danger  { background: linear-gradient(135deg, var(--danger-2), var(--danger));   box-shadow: 0 5px 0 var(--danger-3), var(--shadow); }
+  .menu-card.c-primary:active { box-shadow: 0 2px 0 var(--primary-3), var(--shadow); }
+  .menu-card.c-accent:active  { box-shadow: 0 2px 0 var(--accent-3), var(--shadow); }
+  .menu-card.c-success:active { box-shadow: 0 2px 0 var(--success-3), var(--shadow); }
+  .menu-card.c-warn:active    { box-shadow: 0 2px 0 var(--warn-3), var(--shadow); }
+  .menu-card.c-danger:active  { box-shadow: 0 2px 0 var(--danger-3), var(--shadow); }
+  .screen-chip.c-primary { background: linear-gradient(135deg, var(--primary-2), var(--primary)); }
+  .screen-chip.c-accent  { background: linear-gradient(135deg, var(--accent-2), var(--accent)); }
+  .screen-chip.c-success { background: linear-gradient(135deg, var(--success-2), var(--success)); }
+  .screen-chip.c-warn    { background: linear-gradient(135deg, var(--warn-2), var(--warn)); }
+  .screen-chip.c-danger  { background: linear-gradient(135deg, var(--danger-2), var(--danger)); }
+
+  .hint-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: var(--text-sub);
+    line-height: 1.6;
+  }
+
+  /* --- Shared panel/card look --- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    box-shadow: var(--shadow);
+  }
+  .btn {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-weight: 700;
+    font-size: 14.5px;
+    color: white;
+    /* パソコン版のようなぷっくりした立体感と、押した瞬間わかる沈み込みを
+       底の縁の色(box-shadowの1つ目)＋押した時にtranslateYで表現する */
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  .btn:active { transform: translateY(2px); }
+  .btn-primary { background: linear-gradient(135deg, var(--primary-2), var(--primary)); box-shadow: 0 3px 0 var(--primary-3), 0 5px 10px -3px rgba(79,70,229,0.45); }
+  .btn-success { background: linear-gradient(135deg, var(--success-2), var(--success)); box-shadow: 0 3px 0 var(--success-3), 0 5px 10px -3px rgba(13,148,136,0.45); }
+  .btn-danger  { background: linear-gradient(135deg, var(--danger-2), var(--danger));   box-shadow: 0 3px 0 var(--danger-3), 0 5px 10px -3px rgba(225,29,72,0.45); }
+  .btn-primary:active { box-shadow: 0 1px 0 var(--primary-3), 0 2px 4px -2px rgba(79,70,229,0.45); }
+  .btn-success:active { box-shadow: 0 1px 0 var(--success-3), 0 2px 4px -2px rgba(13,148,136,0.45); }
+  .btn-danger:active  { box-shadow: 0 1px 0 var(--danger-3), 0 2px 4px -2px rgba(225,29,72,0.45); }
+  .btn-ghost {
+    /* 透明だと木目の背景がそのまま透けて文字が読みにくくなるため、
+       カード面と同じ色を敷いて確実に文字が読めるようにする */
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-sub);
+    font-weight: 700;
+    box-shadow: 0 2px 0 var(--border), 0 1px 3px rgba(15,23,42,0.08);
+  }
+  .btn-ghost:active { box-shadow: 0 0 0 var(--border), 0 1px 2px rgba(15,23,42,0.08); background: var(--surface-2); }
+  .btn-icon {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  input[type="text"], input[type="password"], input[type="number"], textarea, select {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 15px;
+    width: 100%;
+  }
+  select { font-weight: 700; height: 44px; }
+  textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
+  input:focus, textarea:focus, select:focus, [contenteditable]:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+  /* --- Timer --- */
+  #timer-display {
+    font-family: 'M PLUS Rounded 1c', sans-serif;
+    font-size: 46px;
+    font-weight: 800;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    padding: 20px 0 4px;
+  }
+  #timer-inputs { justify-content: center; flex-wrap: wrap; }
+  #timer-inputs input { width: 62px; text-align: center; font-size: 20px; font-variant-numeric: tabular-nums; }
+  #timer-buttons { justify-content: center; margin-top: 10px; }
+  #timer-buttons .btn { flex: 1; }
+  #timer-sound-row { justify-content: center; margin-top: 14px; }
+  #timer-sound { flex: 1; max-width: 220px; }
+
+  /* --- TODO --- */
+  #todo-done-head { margin: 16px 0 6px; }
+  .todo-row .time { font-size: 11px; color: var(--text-sub); margin-top: 1px; }
+  .todo-row .edit { border: none; background: transparent; color: var(--text-sub); font-size: 15px; padding: 4px 6px; }
+  .todo-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 12px;
+  }
+  .todo-row .check {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid var(--accent); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;
+  }
+  .todo-row.done .check { background: var(--accent); }
+  .todo-row .textbox { flex: 1; min-width: 0; }
+  .todo-row .text { font-size: 15px; word-break: break-word; font-weight: 600; }
+  .todo-row.done .text { text-decoration: line-through; color: var(--text-sub); font-weight: 400; }
+  .todo-row .del { border: none; background: transparent; color: var(--text-sub); font-size: 18px; padding: 4px 6px; }
+  #todo-active-list, #todo-done-list { display: flex; flex-direction: column; gap: 8px; }
+
+  /* --- Memo --- */
+
+  /* 押した時にはっきりわかるよう、小さいアイコンボタン系にも共通で
+     沈み込みフィードバックをつける */
+  #back-btn:active, .btn-icon:active, .todo-row .check:active,
+  .todo-row .edit:active, .todo-row .del:active, .attach-row .del:active,
+  .reorder-row .handle:active {
+    transform: scale(0.88);
+  }
+  .cal-cell { transition: transform 0.08s ease; }
+  .cal-cell:not(.empty):active { transform: scale(0.94); background: var(--surface-2); }
+  /* メモ画面: 本文の入力欄が画面の残り高さいっぱいに伸びるようにし、
+     下に木目の背景だけが大きく余ってしまわないようにする */
+  #screen-memo:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+  }
+  #memo-body {
+    background: #FFFDF6; border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 16px; min-height: 160px; flex: 1; overflow-y: auto;
+    font-size: 15px; line-height: 1.75;
+    box-shadow: var(--shadow);
+  }
+  #memo-toolbar { justify-content: flex-start; flex-wrap: wrap; flex-shrink: 0; }
+  #memo-body:empty:before { content: attr(data-placeholder); color: var(--text-sub); }
+  #memo-attachments { display: flex; flex-direction: column; gap: 8px; }
+  .attach-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; font-size: 13.5px;
+  }
+  .attach-row .thumb {
+    width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    background: var(--surface-2);
+  }
+  .attach-row .icon { width: 40px; height: 40px; border-radius: 8px; background: var(--surface-2);
+    display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .attach-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-row a.name { color: var(--primary); text-decoration: none; }
+  .attach-row .del { border: none; background: transparent; color: var(--text-sub); font-size: 16px; padding: 4px 6px; flex-shrink: 0; }
+
+  /* --- フォルダ並び替えパネル --- */
+  #folder-reorder-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+  .reorder-row {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 6px 6px 6px 4px;
+  }
+  .reorder-row .handle {
+    font-size: 18px; color: var(--text-sub); cursor: grab;
+    width: 40px; height: 40px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; /* ドラッグ中にブラウザの縦スクロールと競合しないようにする */
+  }
+  .reorder-row .fname { flex: 1; font-weight: 700; font-size: 14.5px; }
+  .reorder-row.dragging { opacity: 0.5; box-shadow: 0 6px 14px rgba(15,23,42,0.18); }
+
+  /* --- Calendar --- */
+  #cal-head { justify-content: space-between; }
+  #cal-title { font-size: 17px; font-weight: 800; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .cal-dow { text-align: center; font-size: 11.5px; color: var(--text-sub); font-weight: 700; padding-bottom: 2px; }
+  .cal-cell {
+    min-height: 54px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); display: flex; flex-direction: column;
+    align-items: stretch; padding: 4px 3px; font-size: 12.5px; gap: 2px; position: relative;
+  }
+  .cal-cell.empty { border: none; background: transparent; }
+  /* メモがある日はオレンジ、今日はインディゴで色付けして一目でわかるようにする */
+  .cal-cell.has-note { background: rgba(234,88,12,0.11); border-color: rgba(234,88,12,0.35); }
+  .cal-cell.today { background: rgba(79,70,229,0.14); border: 2px solid var(--primary); }
+  .cal-cell.today.has-note { background: linear-gradient(135deg, rgba(79,70,229,0.16), rgba(234,88,12,0.16)); }
+  .cal-cell.today .num { color: var(--primary); font-weight: 800; }
+  .cal-cell .num { text-align: left; padding-left: 1px; }
+  .cal-cell .prev {
+    font-size: 9.5px; line-height: 1.2; color: var(--warn); font-weight: 700; text-align: left;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    word-break: break-all;
+  }
+  #cal-editor { margin-top: 4px; }
+  #cal-editor-title { font-weight: 800; margin-bottom: 8px; }
+
+  /* --- Vault --- */
+  #vault-lock { text-align: center; padding: 30px 10px; }
+  #vault-lock .icon { font-size: 40px; margin-bottom: 6px; }
+  .vault-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .vault-item .title { font-weight: 800; font-size: 15px; margin-bottom: 6px; }
+  .vault-item .content { color: var(--text-sub); font-size: 14px; white-space: pre-wrap; line-height: 1.6; }
+  #vault-list { display: flex; flex-direction: column; gap: 10px; }
+
+  /* --- Modal --- */
+  #modal-root {
+    position: fixed; inset: 0; z-index: 50;
+    display: none; align-items: flex-end; justify-content: center;
+    background: rgba(15,23,42,0.45);
+  }
+  #modal-root.open { display: flex; }
+  #modal-box {
+    background: var(--surface); width: 100%; max-width: 640px;
+    border-radius: 20px 20px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.25);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  @media (min-width: 480px) {
+    #modal-root { align-items: center; }
+    #modal-box { border-radius: 18px; margin: 20px; }
+  }
+  #modal-title { font-weight: 800; font-size: 16px; }
+  #modal-buttons { justify-content: flex-end; }
+
+  .empty-state { text-align: center; color: var(--text-sub); font-size: 13.5px; padding: 24px 0; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header id="topbar" class="home">
+    <button id="back-btn" hidden aria-label="ホームへ戻る">← 戻る</button>
+    <span id="screen-chip" class="screen-chip" hidden></span>
+  </header>
+
+  <main>
+    <section id="screen-home" class="screen">
+      <div class="masthead">
+        <div class="mh-tabs">
+          <span class="mh-tab" style="background:var(--primary)"></span>
+          <span class="mh-tab" style="background:var(--accent)"></span>
+          <span class="mh-tab" style="background:var(--success)"></span>
+          <span class="mh-tab" style="background:var(--warn)"></span>
+          <span class="mh-tab" style="background:var(--danger)"></span>
+        </div>
+        <div class="mh-rings"></div>
+        <div class="mh-body">
+          <div class="mh-margin"></div>
+          <div class="mh-content">
+            <div class="mh-date" id="mh-date"></div>
+            <h1 class="mh-title">Multi<span class="accent-m">Memo</span></h1>
+            <div class="mh-highlight"></div>
+            <div class="mh-rule"></div>
+            <div class="mh-sub">✎ あなたの毎日を、一冊に。</div>
+          </div>
+          <div class="mh-pencil">✏️</div>
+        </div>
+      </div>
+      <div class="hint-banner" id="conn-hint" hidden></div>
+      <div id="home-cards">
+        <button class="menu-card c-primary" data-screen="timer">
+          <span class="icon">⏱️</span>
+          <span><span class="name">タイマー</span><br><span class="desc">集中時間を計る</span></span>
+        </button>
+        <button class="menu-card c-accent" data-screen="todo">
+          <span class="icon">📝</span>
+          <span><span class="name">TO DO</span><br><span class="desc">タスクを管理する</span></span>
+        </button>
+        <button class="menu-card c-success" data-screen="memo">
+          <span class="icon">📄</span>
+          <span><span class="name">メモ</span><br><span class="desc">アイデアを書き留める</span></span>
+        </button>
+        <button class="menu-card c-warn" data-screen="calendar">
+          <span class="icon">📅</span>
+          <span><span class="name">カレンダー</span><br><span class="desc">予定を記録する</span></span>
+        </button>
+        <button class="menu-card c-danger wide" data-screen="vault">
+          <span class="icon">🔒</span>
+          <span><span class="name">セキュリティメモ</span><br><span class="desc">パスワードで保護されたメモ</span></span>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-timer" class="screen" hidden>
+      <div class="panel">
+        <div id="timer-display">00:05:00</div>
+        <div class="row" id="timer-inputs">
+          <input type="number" id="timer-hour" min="0" max="23" value="0"><span>時間</span>
+          <input type="number" id="timer-min" min="0" max="59" value="5"><span>分</span>
+          <input type="number" id="timer-sec" min="0" max="59" value="0"><span>秒</span>
+        </div>
+        <div class="row" id="timer-buttons">
+          <button class="btn btn-primary" id="timer-start">▶ スタート</button>
+          <button class="btn btn-danger" id="timer-stop">■ ストップ</button>
+          <button class="btn btn-ghost" id="timer-reset">↺ リセット</button>
+        </div>
+        <div class="row" id="timer-sound-row">
+          <select id="timer-sound"></select>
+          <button class="btn btn-ghost" id="timer-preview">♪ 試聴</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-todo" class="screen" hidden>
+      <div class="row">
+        <input type="text" id="todo-input" placeholder="タスクを入力...">
+        <button class="btn btn-icon btn-primary" id="todo-add">＋</button>
+      </div>
+      <div id="todo-active-list"></div>
+      <div id="todo-empty" class="empty-state" hidden>🌱<br>まだタスクはありません<br>上の欄から追加してみよう</div>
+      <div id="todo-done-section" hidden>
+        <div class="row" id="todo-done-head">
+          <span id="todo-done-count" style="font-size:13px; font-weight:700; color:var(--text-sub);"></span>
+          <div style="flex:1"></div>
+          <button class="btn-ghost btn" id="todo-clear-done" style="padding:6px 10px; font-size:12px;">すべて削除</button>
+        </div>
+        <div id="todo-done-list"></div>
+      </div>
+    </section>
+
+    <section id="screen-memo" class="screen" hidden>
+      <div class="row">
+        <select id="folder-select" style="flex:1"></select>
+        <button class="btn btn-icon btn-ghost" id="memo-reorder-open">☰</button>
+        <button class="btn btn-icon btn-success" id="memo-add-folder">＋</button>
+      </div>
+      <div id="memo-toolbar" class="row">
+        <button class="btn-ghost btn" id="memo-bold" style="font-weight:900;">B 太字</button>
+        <button class="btn-ghost btn" id="memo-attach-file">📎 ファイルを添付</button>
+        <button class="btn-ghost btn" id="memo-attach-url">🔗 URLを添付</button>
+        <button class="btn-ghost btn" id="memo-attach-image">📋 画像を添付</button>
+        <button class="btn-ghost btn" id="memo-export-pdf">📄 メモをPDFで保存</button>
+        <button class="btn-ghost btn" id="memo-rename">✎ 名前変更</button>
+        <button class="btn-ghost btn" id="memo-delete" style="color:var(--danger);border-color:var(--danger);">🗑 削除</button>
+      </div>
+      <div id="memo-body" contenteditable="true" data-placeholder="ここにメモを入力..."></div>
+      <div id="memo-attachments"></div>
+      <input type="file" id="memo-file-input" hidden>
+    </section>
+
+    <section id="screen-calendar" class="screen" hidden>
+      <div class="panel">
+        <div class="row" id="cal-head">
+          <button class="btn-ghost btn btn-icon" id="cal-prev">←</button>
+          <div id="cal-title" class="display"></div>
+          <button class="btn-ghost btn btn-icon" id="cal-next">→</button>
+        </div>
+        <div class="cal-grid" id="cal-dow-row"></div>
+        <div class="cal-grid" id="cal-grid" style="margin-top:6px;"></div>
+      </div>
+      <div class="panel" id="cal-editor" hidden>
+        <div id="cal-editor-title"></div>
+        <textarea id="cal-editor-text" placeholder="この日のメモ..."></textarea>
+        <div class="row" style="margin-top:10px; justify-content:flex-end;">
+          <button class="btn btn-ghost" id="cal-editor-close">閉じる</button>
+          <button class="btn btn-primary" id="cal-editor-save">保存</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-vault" class="screen" hidden>
+      <div id="vault-lock" class="panel">
+        <div class="icon">🔒</div>
+        <h3 id="vault-lock-title">パスワードを設定してください</h3>
+        <p style="color:var(--text-sub); font-size:13px;" id="vault-lock-desc">このメモを守るパスワードを決めてください（初回のみ）</p>
+        <input type="password" id="vault-pw-input" placeholder="パスワード" style="margin:10px 0;">
+        <button class="btn btn-danger" id="vault-pw-submit" style="width:100%;">パスワードを設定</button>
+        <p id="vault-pw-error" style="color:var(--danger); font-size:13px; display:none;">パスワードが違います</p>
+        <button class="btn-ghost btn" id="vault-forgot" hidden style="margin-top:6px; border:none;">パスワードを忘れた方はこちら</button>
+      </div>
+      <div id="vault-unlocked" hidden>
+        <div class="row">
+          <div style="flex:1"></div>
+          <button class="btn btn-icon btn-danger" id="vault-add">＋</button>
+        </div>
+        <div id="vault-list"></div>
+        <div id="vault-empty" class="empty-state" hidden>まだ何も保存されていません</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-root">
+  <div id="modal-box">
+    <div id="modal-title"></div>
+    <div id="modal-message" hidden style="color:var(--text-sub); font-size:14px; line-height:1.6;"></div>
+    <input type="text" id="modal-input" hidden>
+    <textarea id="modal-textarea" hidden></textarea>
+    <div class="row" id="modal-buttons">
+      <button class="btn btn-ghost" id="modal-cancel">キャンセル</button>
+      <button class="btn btn-primary" id="modal-ok">決定</button>
+    </div>
+  </div>
+</div>
+
+<div id="reorder-modal-root" style="position:fixed; inset:0; z-index:50; display:none; align-items:center; justify-content:center; background:rgba(15,23,42,0.45);">
+  <div style="background:var(--surface); width:100%; max-width:520px; margin:20px; border-radius:18px; padding:20px; display:flex; flex-direction:column; gap:12px;">
+    <div style="font-weight:800; font-size:16px;">フォルダの並び替え</div>
+    <div style="color:var(--text-sub); font-size:12.5px;">左の「☰」を指で押さえたまま上下にドラッグすると順番を変えられます</div>
+    <div id="folder-reorder-list"></div>
+    <div class="row" style="justify-content:flex-end;">
+      <button class="btn btn-primary" id="reorder-done">✓ 完了</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- モーダル（テキスト入力・確認・お知らせ 共通ダイアログ） ----------
+  // Artifactはサンドボックス化されたiframeで動くため、ブラウザ標準の
+  // confirm()/alert()が反応しない（押しても何も起きない）ことがある。
+  // そのため削除確認やお知らせも含めて、すべて自前のモーダルで行う。
+  const modalRoot = document.getElementById("modal-root");
+  const modalTitle = document.getElementById("modal-title");
+  const modalMessage = document.getElementById("modal-message");
+  const modalInput = document.getElementById("modal-input");
+  const modalTextarea = document.getElementById("modal-textarea");
+  const modalOk = document.getElementById("modal-ok");
+  const modalCancel = document.getElementById("modal-cancel");
+  let modalResolve = null;
+  let modalMode = "text"; // "text" | "confirm" | "alert"
+
+  function openModal({ title, value = "", multiline = false, placeholder = "" }) {
+    modalMode = "text";
+    modalTitle.textContent = title;
+    modalMessage.hidden = true;
+    modalInput.hidden = multiline;
+    modalTextarea.hidden = !multiline;
+    modalCancel.hidden = false;
+    modalOk.textContent = "決定";
+    const field = multiline ? modalTextarea : modalInput;
+    field.value = value;
+    field.placeholder = placeholder;
+    modalRoot.classList.add("open");
+    setTimeout(() => field.focus(), 50);
+    return new Promise((resolve) => { modalResolve = resolve; });
+  }
+  function openConfirm(message) {
+    modalMode = "confirm";
+    modalTitle.textContent = "確認";
+    modalMessage.hidden = false;
+    modalMessage.textContent = message;
+    modalInput.hidden = true;
+    modalTextarea.hidden = true;
+    modalCancel.hidden = false;
+    modalOk.textContent = "OK";
+    modalRoot.classList.add("open");
+    return new Promise((resolve) => { modalResolve = resolve; });
+  }
+  function openAlert(message) {
+    modalMode = "alert";
+    modalTitle.textContent = "お知らせ";
+    modalMessage.hidden = false;
+    modalMessage.textContent = message;
+    modalInput.hidden = true;
+    modalTextarea.hidden = true;
+    modalCancel.hidden = true;
+    modalOk.textContent = "OK";
+    modalRoot.classList.add("open");
+    return new Promise((resolve) => { modalResolve = resolve; });
+  }
+  function closeModal(result) {
+    modalRoot.classList.remove("open");
+    if (modalResolve) { modalResolve(result); modalResolve = null; }
+  }
+  modalOk.addEventListener("click", () => {
+    if (modalMode === "confirm") { closeModal(true); return; }
+    if (modalMode === "alert") { closeModal(undefined); return; }
+    const field = modalTextarea.hidden ? modalInput : modalTextarea;
+    closeModal(field.value.trim());
+  });
+  modalCancel.addEventListener("click", () => closeModal(modalMode === "confirm" ? false : null));
+  modalRoot.addEventListener("click", (e) => {
+    if (e.target === modalRoot) closeModal(modalMode === "confirm" ? false : null);
+  });
+
+  // ---------- 木目の壁紙（デスクトップ版と同じく全画面の背景に敷く） ----------
+  (function applyWoodBackground() {
+    const w = 320, h = 320;
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    const base = { r: 200, g: 154, b: 106 };
+    ctx.fillStyle = "rgb(" + base.r + "," + base.g + "," + base.b + ")";
+    ctx.fillRect(0, 0, w, h);
+    const shadeOptions = [-32, -22, -14, -6, 8, 16, 24, 30];
+    let y = 0;
+    while (y < h) {
+      const band = 7 + Math.random() * 10;
+      const shade = shadeOptions[Math.floor(Math.random() * shadeOptions.length)];
+      const col = [
+        Math.max(0, Math.min(255, base.r + shade)),
+        Math.max(0, Math.min(255, base.g + shade)),
+        Math.max(0, Math.min(255, base.b + shade)),
+      ];
+      ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + (0.22 + Math.random() * 0.22).toFixed(2) + ")";
+      ctx.fillRect(0, y, w, band);
+      const grainCount = Math.floor(Math.random() * 3);
+      for (let i = 0; i < grainCount; i++) {
+        const ly = y + Math.random() * band;
+        ctx.strokeStyle = "rgba(92,58,30," + (0.1 + Math.random() * 0.12).toFixed(2) + ")";
+        ctx.beginPath();
+        ctx.moveTo(0, ly);
+        ctx.lineTo(w, ly + (Math.random() * 6 - 3));
+        ctx.stroke();
+      }
+      y += band;
+    }
+    document.body.style.backgroundImage = "url(" + canvas.toDataURL("image/png") + ")";
+    document.body.style.backgroundRepeat = "repeat";
+  })();
+
+  const mhDate = document.getElementById("mh-date");
+  if (mhDate) {
+    const now = new Date();
+    mhDate.textContent = now.getFullYear() + " . " + String(now.getMonth() + 1).padStart(2, "0") + " . " + String(now.getDate()).padStart(2, "0");
+  }
+
+  // ---------- 画面切り替え ----------
+  const screens = ["home", "timer", "todo", "memo", "calendar", "vault"];
+  const backBtn = document.getElementById("back-btn");
+  const topbar = document.getElementById("topbar");
+  const screenChip = document.getElementById("screen-chip");
+  // デスクトップ版の_make_header()と同じく、機能ごとのアイコン+アクセントカラーの
+  // チップを見出しに添える
+  const screenMeta = {
+    timer:    { icon: "⏱️", title: "タイマー",         color: "primary" },
+    todo:     { icon: "📝", title: "TO DO",             color: "accent" },
+    memo:     { icon: "📄", title: "メモ",               color: "success" },
+    calendar: { icon: "📅", title: "カレンダー",         color: "warn" },
+    vault:    { icon: "🔒", title: "セキュリティメモ",   color: "danger" },
+  };
+
+  function showScreen(name) {
+    screens.forEach((s) => {
+      document.getElementById("screen-" + s).hidden = (s !== name);
+    });
+    if (name === "home") {
+      topbar.classList.add("home");
+      backBtn.hidden = true;
+      screenChip.hidden = true;
+    } else {
+      topbar.classList.remove("home");
+      backBtn.hidden = false;
+      const meta = screenMeta[name];
+      screenChip.hidden = false;
+      screenChip.textContent = meta.icon;
+      screenChip.className = "screen-chip c-" + meta.color;
+      let h2 = document.getElementById("screen-title");
+      if (!h2) {
+        h2 = document.createElement("h2");
+        h2.id = "screen-title";
+        topbar.appendChild(h2);
+      }
+      h2.hidden = false;
+      h2.textContent = meta.title;
+    }
+    if (name === "todo") initTodoScreen();
+    if (name === "memo") initMemoScreen();
+    if (name === "calendar") initCalendarScreen();
+    if (name === "vault") initVaultScreen();
+    if (name !== "timer") { /* タイマーはバックグラウンドでも動かし続ける */ }
+  }
+  document.querySelectorAll(".menu-card").forEach((btn) => {
+    btn.addEventListener("click", () => showScreen(btn.dataset.screen));
+  });
+  backBtn.addEventListener("click", () => showScreen("home"));
+
+  // ---------- ローカル保存(この端末のブラウザ内だけに保存する簡易DB) ----------
+  // Claudeへのログインを不要にするため、サーバー側の保存機能は使わず、
+  // Firestoreライクな最小限のAPI(collection/doc/get/set/update/delete/
+  // onSnapshot等)をlocalStorageの上に自前で実装している。
+  // そのためClaudeにログインしていなくても、このページを開いた端末の
+  // ブラウザだけで完結してずっと使い続けられる（別の端末とは同期しない）。
+  function createLocalDb() {
+    const STORAGE_KEY = "multimemo_local_data_v1";
+    let store = {};
+    try { store = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch (e) { store = {}; }
+
+    function persist() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) { /* 容量超過等は無視 */ }
+    }
+    function getCol(path) {
+      if (!store[path]) store[path] = {};
+      return store[path];
+    }
+    let seq = 0;
+    function newId() {
+      seq += 1;
+      return "id" + Date.now().toString(36) + seq.toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+    const listeners = new Map();
+    function notify(path) {
+      listeners.forEach((l) => { if (l.path === path) l.fire(); });
+    }
+    function docSnap(path, id) {
+      const data = getCol(path)[id];
+      return {
+        id,
+        exists: data !== undefined,
+        data: () => (data === undefined ? undefined : JSON.parse(JSON.stringify(data))),
+      };
+    }
+    function makeDocRef(path, id) {
+      return {
+        id,
+        path: path + "/" + id,
+        get: async () => docSnap(path, id),
+        set: async (data) => { getCol(path)[id] = JSON.parse(JSON.stringify(data)); persist(); notify(path); },
+        update: async (data) => {
+          const col = getCol(path);
+          if (col[id] === undefined) { const e = new Error("no such document"); e.code = "invalid_argument"; throw e; }
+          col[id] = Object.assign({}, col[id], JSON.parse(JSON.stringify(data)));
+          persist(); notify(path);
+        },
+        delete: async () => { delete getCol(path)[id]; persist(); notify(path); },
+        onSnapshot: (next) => {
+          const key = Symbol();
+          const fire = () => next(docSnap(path, id));
+          listeners.set(key, { path, fire });
+          fire();
+          return () => listeners.delete(key);
+        },
+      };
+    }
+    function matchWhere(v, op, val) {
+      switch (op) {
+        case "==": return v === val;
+        case "!=": return v !== val;
+        case "<": return v < val;
+        case "<=": return v <= val;
+        case ">": return v > val;
+        case ">=": return v >= val;
+        case "in": return Array.isArray(val) && val.includes(v);
+        case "not-in": return Array.isArray(val) && !val.includes(v);
+        case "array-contains": return Array.isArray(v) && v.includes(val);
+        default: return true;
+      }
+    }
+    function querySnap(path, wheres, order) {
+      const col = getCol(path);
+      let ids = Object.keys(col);
+      wheres.forEach(([field, op, val]) => { ids = ids.filter((id) => matchWhere(col[id][field], op, val)); });
+      if (order) {
+        const [field, dir] = order;
+        ids.sort((a, b) => {
+          const av = col[a][field], bv = col[b][field];
+          if (av === bv) return 0;
+          const cmp = av < bv ? -1 : 1;
+          return dir === "desc" ? -cmp : cmp;
+        });
+      } else {
+        ids.sort();
+      }
+      const docs = ids.map((id) => docSnap(path, id));
+      return { docs, size: docs.length, empty: docs.length === 0, docChanges: () => [] };
+    }
+    function makeCollectionRef(path, wheres, order) {
+      return {
+        path,
+        doc: (id) => makeDocRef(path, id || newId()),
+        add: async (data) => { const ref = makeDocRef(path, newId()); await ref.set(data); return ref; },
+        where: (field, op, val) => makeCollectionRef(path, wheres.concat([[field, op, val]]), order),
+        orderBy: (field, dir) => makeCollectionRef(path, wheres, [field, dir || "asc"]),
+        limit: () => makeCollectionRef(path, wheres, order),
+        get: async () => querySnap(path, wheres, order),
+        onSnapshot: (next) => {
+          const key = Symbol();
+          const fire = () => next(querySnap(path, wheres, order));
+          listeners.set(key, { path, fire });
+          fire();
+          return () => listeners.delete(key);
+        },
+      };
+    }
+    return {
+      doc: (path) => {
+        const parts = path.split("/");
+        const id = parts.pop();
+        return makeDocRef(parts.join("/"), id);
+      },
+      collection: (path) => makeCollectionRef(path, [], null),
+    };
+  }
+
+  let db = null;
+  let dbReady = false;
+  const connHint = document.getElementById("conn-hint");
+
+  async function initDb() {
+    try {
+      // 動作確認を兼ねて実際に書き込んでみる(プライベートブラウジング等で
+      // localStorageが使えない場合はここで例外になる)
+      localStorage.setItem("__multimemo_probe__", "1");
+      localStorage.removeItem("__multimemo_probe__");
+      db = createLocalDb();
+      dbReady = true;
+    } catch (e) {
+      db = null;
+      dbReady = false;
+      connHint.hidden = false;
+      connHint.textContent = "⚠ このブラウザでは保存機能が使えませんでした（プライベートブラウジング中など）。通常モードのブラウザで開き直してください。";
+    }
+  }
+  const dbReadyPromise = initDb();
+
+  // ---------- タイマー ----------
+  // デスクトップ版のSOUND_PATTERNSと同じ音色一覧(周波数Hz, 長さms)。0Hzは無音。
+  const SOUND_PATTERNS = {
+    "🔔 ベル": [[988, 90], [0, 40], [988, 90], [0, 40], [740, 420]],
+    "🎵 マリンバ": [[523, 110], [659, 110], [784, 110], [1047, 260]],
+    "🎹 ピアノ風": [[659, 160], [587, 160], [494, 160], [587, 160], [659, 480]],
+    "📢 アラーム": [[1000, 200], [0, 110], [1000, 200], [0, 110], [1000, 460]],
+    "⏰ 目覚まし": Array(6).fill([[1240, 80], [0, 70]]).flat(),
+    "🚨 サイレン": Array(4).fill([[680, 200], [960, 200]]).flat(),
+    "💧 ピコン": [[1568, 70], [0, 30], [2093, 150]],
+    "🐦 ことり": [[2200, 55], [2600, 55], [2200, 55], [2900, 130]],
+    "🎯 ピッピッ": Array(4).fill([[1800, 90], [0, 90]]).flat(),
+    "🌙 やさしいチャイム": [[784, 260], [0, 60], [1047, 260], [0, 60], [1319, 620]],
+  };
+  const timerDisplay = document.getElementById("timer-display");
+  const timerHour = document.getElementById("timer-hour");
+  const timerMin = document.getElementById("timer-min");
+  const timerSec = document.getElementById("timer-sec");
+  const timerSoundSelect = document.getElementById("timer-sound");
+  let timerRemaining = 5 * 60;
+  let timerHandle = null;
+  let audioCtx = null;
+
+  Object.keys(SOUND_PATTERNS).forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    timerSoundSelect.appendChild(opt);
+  });
+
+  function inputSeconds() {
+    return (parseInt(timerHour.value, 10) || 0) * 3600 +
+      (parseInt(timerMin.value, 10) || 0) * 60 +
+      (parseInt(timerSec.value, 10) || 0);
+  }
+  function renderTimer() {
+    const h = Math.floor(timerRemaining / 3600);
+    const m = Math.floor((timerRemaining % 3600) / 60);
+    const s = timerRemaining % 60;
+    timerDisplay.textContent = String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+  function playPattern(name) {
+    const segs = SOUND_PATTERNS[name] || SOUND_PATTERNS["🔔 ベル"];
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    let t = audioCtx.currentTime;
+    segs.forEach(([freq, ms]) => {
+      const dur = ms / 1000;
+      if (freq > 0) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.setValueAtTime(0.22, t + dur * 0.7);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + dur);
+      }
+      t += dur;
+    });
+  }
+  document.getElementById("timer-preview").addEventListener("click", () => {
+    playPattern(timerSoundSelect.value);
+  });
+  document.getElementById("timer-start").addEventListener("click", () => {
+    if (timerHandle) return;
+    if (timerRemaining <= 0) {
+      timerRemaining = inputSeconds();
+    }
+    if (timerRemaining <= 0) return;
+    timerHandle = setInterval(() => {
+      timerRemaining -= 1;
+      renderTimer();
+      if (timerRemaining <= 0) {
+        clearInterval(timerHandle);
+        timerHandle = null;
+        playPattern(timerSoundSelect.value);
+      }
+    }, 1000);
+  });
+  document.getElementById("timer-stop").addEventListener("click", () => {
+    if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+  });
+  document.getElementById("timer-reset").addEventListener("click", () => {
+    if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+    timerRemaining = inputSeconds();
+    renderTimer();
+  });
+  [timerHour, timerMin, timerSec].forEach((el) => el.addEventListener("change", () => {
+    if (!timerHandle) {
+      timerRemaining = inputSeconds();
+      renderTimer();
+    }
+  }));
+  renderTimer();
+
+  // ---------- TODO ----------
+  const todoActiveList = document.getElementById("todo-active-list");
+  const todoDoneSection = document.getElementById("todo-done-section");
+  const todoDoneList = document.getElementById("todo-done-list");
+  const todoDoneCount = document.getElementById("todo-done-count");
+  const todoEmpty = document.getElementById("todo-empty");
+  const todoInput = document.getElementById("todo-input");
+  let todoUnsub = null;
+  let todoInitDone = false;
+
+  function fmtDoneAt(ts) {
+    if (!ts) return "";
+    const d = new Date(ts);
+    return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function makeTodoRow(doc, data) {
+    const row = document.createElement("div");
+    row.className = "todo-row" + (data.done ? " done" : "");
+    row.innerHTML = `
+      <button class="check">${data.done ? "✓" : ""}</button>
+      <div class="textbox">
+        <div class="text"></div>
+        <div class="time"></div>
+      </div>
+      <button class="edit">✎</button>
+      <button class="del">×</button>`;
+    row.querySelector(".text").textContent = data.text || "";
+    const timeEl = row.querySelector(".time");
+    if (data.done && data.done_at) { timeEl.textContent = "完了 " + fmtDoneAt(data.done_at); } else { timeEl.remove(); }
+    row.querySelector(".check").addEventListener("click", () => {
+      db.doc("todos/" + doc.id).update({ done: !data.done, done_at: data.done ? null : Date.now() });
+    });
+    row.querySelector(".edit").addEventListener("click", async () => {
+      const text = await openModal({ title: "タスクの編集", value: data.text || "" });
+      if (text) db.doc("todos/" + doc.id).update({ text });
+    });
+    row.querySelector(".del").addEventListener("click", () => {
+      db.doc("todos/" + doc.id).delete();
+    });
+    return row;
+  }
+  function renderTodos(docs) {
+    todoActiveList.innerHTML = "";
+    todoDoneList.innerHTML = "";
+    const active = docs.filter((d) => !d.data().done);
+    const done = docs.filter((d) => d.data().done);
+    todoEmpty.hidden = docs.length > 0;
+    active.forEach((doc) => todoActiveList.appendChild(makeTodoRow(doc, doc.data())));
+    todoDoneSection.hidden = done.length === 0;
+    if (done.length) {
+      todoDoneCount.textContent = "完了済み (" + done.length + ")";
+      done.forEach((doc) => todoDoneList.appendChild(makeTodoRow(doc, doc.data())));
+    }
+  }
+  async function initTodoScreen() {
+    await dbReadyPromise;
+    if (todoInitDone || !dbReady) return;
+    todoInitDone = true;
+    todoUnsub = db.collection("todos").orderBy("created_at", "asc").onSnapshot((snap) => {
+      renderTodos(snap.docs);
+    }, () => {});
+  }
+  document.getElementById("todo-add").addEventListener("click", addTodo);
+  todoInput.addEventListener("keydown", (e) => { if (e.key === "Enter") addTodo(); });
+  async function addTodo() {
+    const text = todoInput.value.trim();
+    if (!text || !dbReady) return;
+    todoInput.value = "";
+    await db.collection("todos").add({ text, done: false, done_at: null, created_at: Date.now() });
+  }
+  document.getElementById("todo-clear-done").addEventListener("click", async () => {
+    if (!(await openConfirm("完了済みのタスクをすべて削除しますか？"))) return;
+    const snap = await db.collection("todos").where("done", "==", true).get();
+    await Promise.all(snap.docs.map((d) => db.doc("todos/" + d.id).delete()));
+  });
+
+  // ---------- メモ ----------
+  // フォルダ切り替えはデスクトップ版と同じくプルダウン(select)で行う
+  const folderSelect = document.getElementById("folder-select");
+  const memoBody = document.getElementById("memo-body");
+  let memoFolders = [];
+  let currentFolderId = null;
+  let memoUnsub = null;
+  let memoInitDone = false;
+  let memoSaveTimer = null;
+
+  function renderFolderSelect() {
+    folderSelect.innerHTML = "";
+    memoFolders.forEach((f) => {
+      const opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = f.name;
+      if (f.id === currentFolderId) opt.selected = true;
+      folderSelect.appendChild(opt);
+    });
+  }
+  folderSelect.addEventListener("change", () => switchFolder(folderSelect.value));
+  function switchFolder(id) {
+    currentFolderId = id;
+    renderFolderSelect();
+    const f = memoFolders.find((x) => x.id === id);
+    memoBody.innerHTML = (f && f.content_html) || "";
+    renderAttachments();
+  }
+  async function ensureDefaultFolder() {
+    const snap = await db.collection("memo_folders").orderBy("order", "asc").get();
+    if (snap.empty) {
+      await db.collection("memo_folders").add({ name: "メイン", order: 0, content_html: "", attachments: [] });
+    }
+  }
+  async function initMemoScreen() {
+    await dbReadyPromise;
+    if (memoInitDone || !dbReady) return;
+    memoInitDone = true;
+    await ensureDefaultFolder();
+    memoUnsub = db.collection("memo_folders").orderBy("order", "asc").onSnapshot((snap) => {
+      memoFolders = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      if (!currentFolderId && memoFolders.length) currentFolderId = memoFolders[0].id;
+      renderFolderSelect();
+      const f = memoFolders.find((x) => x.id === currentFolderId);
+      if (f && document.activeElement !== memoBody) memoBody.innerHTML = f.content_html || "";
+      renderAttachments();
+    }, () => {});
+  }
+
+  // ---- 添付ファイル（ファイル・URL・画像） ----
+  const memoAttachments = document.getElementById("memo-attachments");
+  const memoFileInput = document.getElementById("memo-file-input");
+  const ACCEPTED_ASSET_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "video/mp4", "video/webm", "application/pdf"];
+
+  function currentFolder() { return memoFolders.find((x) => x.id === currentFolderId); }
+
+  function renderAttachments() {
+    memoAttachments.innerHTML = "";
+    const f = currentFolder();
+    const list = (f && f.attachments) || [];
+    list.forEach((att, idx) => {
+      const row = document.createElement("div");
+      row.className = "attach-row";
+      const left = att.contentType && att.contentType.startsWith("image/")
+        ? `<img class="thumb" src="${att.url}">`
+        : `<div class="icon">${att.type === "url" ? "🔗" : "📎"}</div>`;
+      row.innerHTML = left +
+        `<a class="name" href="${att.url}" target="_blank" rel="noopener"></a>` +
+        `<button class="del">×</button>`;
+      row.querySelector(".name").textContent = att.name || att.url;
+      row.querySelector(".del").addEventListener("click", () => {
+        const next = list.filter((_, i) => i !== idx);
+        db.doc("memo_folders/" + currentFolderId).update({ attachments: next });
+      });
+      memoAttachments.appendChild(row);
+    });
+  }
+  async function addAttachment(att) {
+    const f = currentFolder();
+    if (!f) return;
+    const next = (f.attachments || []).concat([att]);
+    await db.doc("memo_folders/" + currentFolderId).update({ attachments: next });
+  }
+  document.getElementById("memo-attach-url").addEventListener("click", async () => {
+    const url = await openModal({ title: "URLを追加", placeholder: "https://example.com" });
+    if (!url) return;
+    const name = await openModal({ title: "表示名", placeholder: "空欄ならURLをそのまま表示" });
+    addAttachment({ type: "url", url, name: name || url });
+  });
+  // ファイル/画像は外部保存サービスを使わず、この端末のデータの中に
+  // そのままdata URLとして持たせる(ログイン不要にするため)。
+  // localStorageは容量が限られるので、大きすぎるファイルは弾く。
+  const MAX_ATTACH_BYTES = 1.5 * 1024 * 1024;
+  function readFileAsDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error("読み込みに失敗しました"));
+      reader.readAsDataURL(blob);
+    });
+  }
+  document.getElementById("memo-attach-file").addEventListener("click", () => {
+    memoFileInput.click();
+  });
+  memoFileInput.addEventListener("change", async () => {
+    const file = memoFileInput.files[0];
+    memoFileInput.value = "";
+    if (!file) return;
+    if (!ACCEPTED_ASSET_TYPES.includes(file.type)) {
+      await openAlert("この形式のファイルは添付できません（対応形式: 画像・PDF・動画）");
+      return;
+    }
+    if (file.size > MAX_ATTACH_BYTES) {
+      await openAlert("ファイルが大きすぎます（1.5MB以下にしてください）。この端末内に保存する仕組みのため容量に制限があります。");
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      addAttachment({ type: "file", url: dataUrl, name: file.name, contentType: file.type });
+    } catch (e) {
+      await openAlert("添付に失敗しました: " + (e && e.message ? e.message : e));
+    }
+  });
+  document.getElementById("memo-attach-image").addEventListener("click", async () => {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      await openAlert("このブラウザはクリップボードからの画像取得に対応していません。「ファイルを添付」から画像を選んでください。");
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imgType = item.types.find((t) => t.startsWith("image/"));
+        if (imgType) {
+          const blob = await item.getType(imgType);
+          if (blob.size > MAX_ATTACH_BYTES) {
+            await openAlert("画像が大きすぎます（1.5MB以下にしてください）。");
+            return;
+          }
+          const dataUrl = await readFileAsDataUrl(blob);
+          addAttachment({ type: "image", url: dataUrl, name: "画像", contentType: imgType });
+          return;
+        }
+      }
+      await openAlert("クリップボードに画像が見つかりませんでした");
+    } catch (e) {
+      await openAlert("画像の取得に失敗しました。コピー直後にもう一度お試しください。");
+    }
+  });
+
+  // ---- メモをPDFで保存 ----
+  // ダウンロード用の外部機能を使わず、生成したPDFを新しいタブで開く
+  // （そこからブラウザ標準の保存・印刷でPDF化できる）
+  document.getElementById("memo-export-pdf").addEventListener("click", async () => {
+    const f = currentFolder();
+    if (!f) return;
+    const text = memoBody.innerText || "";
+    if (!text.trim()) { await openAlert("メモが空のため、PDFを作成できません。"); return; }
+    if (!window.jspdf) { await openAlert("PDF機能の読み込みに失敗しました。時間をおいて再度お試しください。"); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(f.name, 14, 18);
+    doc.setFontSize(11);
+    const lines = doc.splitTextToSize(text, 180);
+    doc.text(lines, 14, 30);
+    window.open(doc.output("bloburl"), "_blank");
+  });
+
+  // ---- フォルダの並び替え(ポインタドラッグ) ----
+  const reorderModalRoot = document.getElementById("reorder-modal-root");
+  const folderReorderList = document.getElementById("folder-reorder-list");
+  let reorderWorkingList = [];
+
+  document.getElementById("memo-reorder-open").addEventListener("click", () => {
+    reorderWorkingList = memoFolders.map((f) => ({ id: f.id, name: f.name }));
+    renderReorderList();
+    reorderModalRoot.style.display = "flex";
+  });
+  document.getElementById("reorder-done").addEventListener("click", async () => {
+    reorderModalRoot.style.display = "none";
+    await Promise.all(reorderWorkingList.map((f, i) => db.doc("memo_folders/" + f.id).update({ order: i })));
+  });
+
+  function renderReorderList() {
+    folderReorderList.innerHTML = "";
+    reorderWorkingList.forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "reorder-row";
+      row.dataset.id = f.id;
+      row.innerHTML = `<span class="handle">☰</span><span class="fname"></span>`;
+      row.querySelector(".fname").textContent = f.name;
+      attachDragHandlers(row);
+      folderReorderList.appendChild(row);
+    });
+  }
+  // 掴んだ行をDOM上で動かさず(insertBeforeを使わず)見た目だけtransformで動かし、
+  // 指を離した時に初めて配列を並び替えて再描画する。ドラッグ中にDOMを触ると
+  // setPointerCaptureが外れてドラッグが途中で効かなくなることがあったための対策
+  function attachDragHandlers(row) {
+    const handle = row.querySelector(".handle");
+    handle.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const rows = Array.from(folderReorderList.children);
+      const startIndex = rows.indexOf(row);
+      const rowHeight = row.getBoundingClientRect().height + 6; // gap: 6px
+      const startY = e.clientY;
+      let targetIndex = startIndex;
+
+      row.classList.add("dragging");
+      row.style.zIndex = "5";
+      handle.setPointerCapture(e.pointerId);
+
+      const onMove = (ev) => {
+        const deltaY = ev.clientY - startY;
+        row.style.transform = "translateY(" + deltaY + "px)";
+        const shift = Math.round(deltaY / rowHeight);
+        targetIndex = Math.max(0, Math.min(rows.length - 1, startIndex + shift));
+        rows.forEach((r, i) => {
+          if (r === row) return;
+          let off = 0;
+          if (targetIndex > startIndex && i > startIndex && i <= targetIndex) off = -rowHeight;
+          else if (targetIndex < startIndex && i >= targetIndex && i < startIndex) off = rowHeight;
+          r.style.transform = off ? "translateY(" + off + "px)" : "";
+        });
+      };
+      const finish = () => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", finish);
+        handle.removeEventListener("pointercancel", finish);
+        row.classList.remove("dragging");
+        row.style.transform = "";
+        row.style.zIndex = "";
+        rows.forEach((r) => { if (r !== row) r.style.transform = ""; });
+        if (targetIndex !== startIndex) {
+          const item = reorderWorkingList.splice(startIndex, 1)[0];
+          reorderWorkingList.splice(targetIndex, 0, item);
+          renderReorderList();
+        }
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", finish);
+      handle.addEventListener("pointercancel", finish);
+    });
+  }
+  memoBody.addEventListener("input", () => {
+    if (!currentFolderId || !dbReady) return;
+    clearTimeout(memoSaveTimer);
+    memoSaveTimer = setTimeout(() => {
+      db.doc("memo_folders/" + currentFolderId).update({ content_html: memoBody.innerHTML });
+    }, 500);
+  });
+  document.getElementById("memo-bold").addEventListener("click", () => {
+    memoBody.focus();
+    document.execCommand("bold");
+  });
+  document.getElementById("memo-add-folder").addEventListener("click", async () => {
+    const name = await openModal({ title: "新しいフォルダ", placeholder: "フォルダ名を入力" });
+    if (!name) return;
+    const order = memoFolders.length ? Math.max(...memoFolders.map((f) => f.order || 0)) + 1 : 0;
+    const ref = await db.collection("memo_folders").add({ name, order, content_html: "" });
+    currentFolderId = ref.id;
+  });
+  document.getElementById("memo-rename").addEventListener("click", async () => {
+    const f = memoFolders.find((x) => x.id === currentFolderId);
+    if (!f) return;
+    const name = await openModal({ title: "フォルダ名の変更", value: f.name });
+    if (!name) return;
+    db.doc("memo_folders/" + f.id).update({ name });
+  });
+  document.getElementById("memo-delete").addEventListener("click", async () => {
+    if (memoFolders.length <= 1) { await openAlert("最後のフォルダは削除できません"); return; }
+    if (!(await openConfirm("このフォルダを削除しますか？"))) return;
+    const id = currentFolderId;
+    currentFolderId = null;
+    db.doc("memo_folders/" + id).delete();
+  });
+
+  // ---------- カレンダー ----------
+  const calTitle = document.getElementById("cal-title");
+  const calGrid = document.getElementById("cal-grid");
+  const calDowRow = document.getElementById("cal-dow-row");
+  const calEditor = document.getElementById("cal-editor");
+  const calEditorTitle = document.getElementById("cal-editor-title");
+  const calEditorText = document.getElementById("cal-editor-text");
+  let calYear, calMonth;
+  let calNotesCache = {};
+  let calUnsub = null;
+  let calInitDone = false;
+  let calSelectedKey = null;
+  const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function dayKey(y, m, d) { return y + "-" + pad2(m) + "-" + pad2(d); }
+
+  function renderCalendar() {
+    calTitle.textContent = calYear + "年 " + calMonth + "月";
+    calDowRow.innerHTML = "";
+    DOW.forEach((d) => {
+      const el = document.createElement("div");
+      el.className = "cal-dow";
+      el.textContent = d;
+      calDowRow.appendChild(el);
+    });
+    calGrid.innerHTML = "";
+    const firstDow = new Date(calYear, calMonth - 1, 1).getDay();
+    const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+    const today = new Date();
+    const isThisMonth = today.getFullYear() === calYear && (today.getMonth() + 1) === calMonth;
+    for (let i = 0; i < firstDow; i++) {
+      const el = document.createElement("div");
+      el.className = "cal-cell empty";
+      calGrid.appendChild(el);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = dayKey(calYear, calMonth, d);
+      const note = calNotesCache[key];
+      const el = document.createElement("div");
+      el.className = "cal-cell" +
+        (isThisMonth && today.getDate() === d ? " today" : "") +
+        (note ? " has-note" : "");
+      el.innerHTML = '<span class="num">' + d + "</span>" +
+        (note ? '<span class="prev"></span>' : "");
+      if (note) el.querySelector(".prev").textContent = note.length > 30 ? note.slice(0, 30) + "…" : note;
+      el.addEventListener("click", () => openDayEditor(key, d));
+      calGrid.appendChild(el);
+    }
+  }
+  function openDayEditor(key, d) {
+    calSelectedKey = key;
+    calEditorTitle.textContent = calYear + "年" + calMonth + "月" + d + "日のメモ";
+    calEditorText.value = calNotesCache[key] || "";
+    calEditor.hidden = false;
+    calEditorText.focus();
+  }
+  document.getElementById("cal-editor-close").addEventListener("click", () => { calEditor.hidden = true; });
+  document.getElementById("cal-editor-save").addEventListener("click", () => {
+    if (!calSelectedKey || !dbReady) return;
+    const text = calEditorText.value;
+    if (text.trim() === "") {
+      db.doc("calendar_notes/" + calSelectedKey).delete();
+    } else {
+      db.doc("calendar_notes/" + calSelectedKey).set({ text });
+    }
+    calEditor.hidden = true;
+  });
+  document.getElementById("cal-prev").addEventListener("click", () => {
+    calMonth -= 1; if (calMonth < 1) { calMonth = 12; calYear -= 1; }
+    calEditor.hidden = true;
+    renderCalendar();
+  });
+  document.getElementById("cal-next").addEventListener("click", () => {
+    calMonth += 1; if (calMonth > 12) { calMonth = 1; calYear += 1; }
+    calEditor.hidden = true;
+    renderCalendar();
+  });
+  async function initCalendarScreen() {
+    const now = new Date();
+    if (!calYear) { calYear = now.getFullYear(); calMonth = now.getMonth() + 1; }
+    renderCalendar();
+    await dbReadyPromise;
+    if (calInitDone || !dbReady) return;
+    calInitDone = true;
+    calUnsub = db.collection("calendar_notes").onSnapshot((snap) => {
+      calNotesCache = {};
+      snap.docs.forEach((d) => { calNotesCache[d.id] = (d.data() || {}).text || ""; });
+      renderCalendar();
+    }, () => {});
+  }
+
+  // ---------- セキュリティメモ ----------
+  const vaultLock = document.getElementById("vault-lock");
+  const vaultUnlocked = document.getElementById("vault-unlocked");
+  const vaultLockTitle = document.getElementById("vault-lock-title");
+  const vaultLockDesc = document.getElementById("vault-lock-desc");
+  const vaultPwInput = document.getElementById("vault-pw-input");
+  const vaultPwSubmit = document.getElementById("vault-pw-submit");
+  const vaultPwError = document.getElementById("vault-pw-error");
+  const vaultForgotBtn = document.getElementById("vault-forgot");
+  const vaultList = document.getElementById("vault-list");
+  const vaultEmpty = document.getElementById("vault-empty");
+  let vaultMeta = null;
+  let vaultUnlockedFlag = false;
+  let vaultInitDone = false;
+  let vaultItemsUnsub = null;
+
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  function isBirthdate(s) { return /^[0-9]{8}$/.test(s); }
+  function renderVaultLockScreen() {
+    if (vaultMeta && vaultMeta.password_hash) {
+      vaultLockTitle.textContent = "パスワードを入力してください";
+      vaultLockDesc.textContent = "セキュリティメモを見るにはパスワードが必要です";
+      vaultPwSubmit.textContent = "ロック解除";
+      vaultForgotBtn.hidden = !vaultMeta.birth_hash;
+    } else {
+      vaultLockTitle.textContent = "パスワードを設定してください";
+      vaultLockDesc.textContent = "このメモを守るパスワードを決めてください（初回のみ）";
+      vaultPwSubmit.textContent = "パスワードを設定";
+      vaultForgotBtn.hidden = true;
+    }
+  }
+  async function initVaultScreen() {
+    await dbReadyPromise;
+    if (!dbReady) return;
+    if (!vaultInitDone) {
+      vaultInitDone = true;
+      const snap = await db.doc("vault_meta/config").get();
+      vaultMeta = snap.exists ? snap.data() : null;
+    }
+    if (vaultUnlockedFlag) {
+      vaultLock.hidden = true;
+      vaultUnlocked.hidden = false;
+      subscribeVaultItems();
+    } else {
+      vaultLock.hidden = false;
+      vaultUnlocked.hidden = true;
+      renderVaultLockScreen();
+    }
+  }
+  vaultPwSubmit.addEventListener("click", async () => {
+    const pw = vaultPwInput.value;
+    if (!pw) return;
+    if (vaultMeta && vaultMeta.password_hash) {
+      const hash = await sha256(pw);
+      if (hash === vaultMeta.password_hash) {
+        vaultUnlockedFlag = true;
+        vaultPwError.style.display = "none";
+        vaultPwInput.value = "";
+        initVaultScreen();
+      } else {
+        vaultPwError.style.display = "block";
+      }
+    } else {
+      // 初回設定: パスワードに続けて、リセット用の生年月日(8桁)も登録する
+      const b1 = await openModal({ title: "初期設定", placeholder: "リセット用の生年月日(8桁: 19950510等)" });
+      if (b1 === null) return;
+      const hash = await sha256(pw);
+      const meta = { password_hash: hash };
+      if (isBirthdate(b1)) {
+        meta.birth_hash = await sha256(b1);
+      } else if (b1) {
+        await openAlert("生年月日は8桁の数字で入力してください。パスワードのみ登録しました。");
+      }
+      await db.doc("vault_meta/config").set(meta);
+      vaultMeta = meta;
+      vaultUnlockedFlag = true;
+      vaultPwInput.value = "";
+      initVaultScreen();
+    }
+  });
+  vaultForgotBtn.addEventListener("click", async () => {
+    const b1 = await openModal({ title: "リセット", placeholder: "登録した生年月日(8桁)を入力" });
+    if (!b1) return;
+    if (await sha256(b1) !== vaultMeta.birth_hash) { await openAlert("生年月日が違います"); return; }
+    const newPw = await openModal({ title: "リセット", placeholder: "新しいパスワードを再設定" });
+    if (!newPw) return;
+    const hash = await sha256(newPw);
+    await db.doc("vault_meta/config").update({ password_hash: hash });
+    vaultMeta.password_hash = hash;
+    await openAlert("パスワードを更新しました。新しいパスワードでロック解除してください。");
+  });
+  function subscribeVaultItems() {
+    if (vaultItemsUnsub) return;
+    vaultItemsUnsub = db.collection("vault_items").orderBy("created_at", "asc").onSnapshot((snap) => {
+      vaultList.innerHTML = "";
+      vaultEmpty.hidden = snap.docs.length > 0;
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        const el = document.createElement("div");
+        el.className = "vault-item";
+        el.innerHTML = `
+          <div class="title"></div>
+          <div class="content" hidden></div>
+          <div class="row" style="margin-top:8px;">
+            <button class="btn-ghost btn" data-act="show">表示</button>
+            <button class="btn-ghost btn" data-act="edit">編集</button>
+            <button class="btn-ghost btn" data-act="del" style="color:var(--danger);border-color:var(--danger);">削除</button>
+          </div>`;
+        el.querySelector(".title").textContent = data.title || "";
+        el.querySelector(".content").textContent = data.content || "";
+        const contentEl = el.querySelector(".content");
+        const showBtn = el.querySelector('[data-act="show"]');
+        showBtn.addEventListener("click", () => {
+          contentEl.hidden = !contentEl.hidden;
+          showBtn.textContent = contentEl.hidden ? "表示" : "隠す";
+        });
+        el.querySelector('[data-act="edit"]').addEventListener("click", async () => {
+          const title = await openModal({ title: "項目名の変更", value: data.title || "" });
+          if (title) db.doc("vault_items/" + doc.id).update({ title });
+        });
+        el.querySelector('[data-act="del"]').addEventListener("click", async () => {
+          if (await openConfirm("削除しますか？")) db.doc("vault_items/" + doc.id).delete();
+        });
+        vaultList.appendChild(el);
+      });
+    }, () => {});
+  }
+  document.getElementById("vault-add").addEventListener("click", async () => {
+    const title = await openModal({ title: "項目名", placeholder: "例: 銀行の暗証番号" });
+    if (!title) return;
+    const content = await openModal({ title: "内容", multiline: true, placeholder: "保存する内容を入力" });
+    if (content === null) return;
+    await db.collection("vault_items").add({ title, content, created_at: Date.now() });
+  });
+})();
+</script>
+</body>
+</html>
