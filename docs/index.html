@@ -228,8 +228,18 @@
     font-size: 22px;
     flex-shrink: 0;
   }
-  .menu-card .name { font-size: 18px; font-weight: 800; }
-  .menu-card .desc { font-size: 12.5px; opacity: 0.9; margin-top: 2px; }
+  .menu-card .label {
+    /* brタグでの改行だと絵文字や文字サイズ違いの行高計算がブラウザにより
+       ばらつき、Safari等でアイコンと文字の縦位置がずれて見えることがあるため、
+       確実にflexで縦積みして中央揃えする */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+  }
+  .menu-card .name { font-size: 18px; font-weight: 800; line-height: 1.2; }
+  .menu-card .desc { font-size: 12.5px; opacity: 0.9; line-height: 1.3; }
   .menu-card.c-primary { background: linear-gradient(135deg, var(--primary-2), var(--primary)); box-shadow: 0 5px 0 var(--primary-3), var(--shadow); }
   .menu-card.c-accent  { background: linear-gradient(135deg, var(--accent-2), var(--accent));   box-shadow: 0 5px 0 var(--accent-3), var(--shadow); }
   .menu-card.c-success { background: linear-gradient(135deg, var(--success-2), var(--success)); box-shadow: 0 5px 0 var(--success-3), var(--shadow); }
@@ -499,23 +509,23 @@
       <div id="home-cards">
         <button class="menu-card c-primary" data-screen="timer">
           <span class="icon">⏱️</span>
-          <span><span class="name">タイマー</span><br><span class="desc">集中時間を計る</span></span>
+          <span class="label"><span class="name">タイマー</span><span class="desc">集中時間を計る</span></span>
         </button>
         <button class="menu-card c-accent" data-screen="todo">
           <span class="icon">📝</span>
-          <span><span class="name">TO DO</span><br><span class="desc">タスクを管理する</span></span>
+          <span class="label"><span class="name">TO DO</span><span class="desc">タスクを管理する</span></span>
         </button>
         <button class="menu-card c-success" data-screen="memo">
           <span class="icon">📄</span>
-          <span><span class="name">メモ</span><br><span class="desc">アイデアを書き留める</span></span>
+          <span class="label"><span class="name">メモ</span><span class="desc">アイデアを書き留める</span></span>
         </button>
         <button class="menu-card c-warn" data-screen="calendar">
           <span class="icon">📅</span>
-          <span><span class="name">カレンダー</span><br><span class="desc">予定を記録する</span></span>
+          <span class="label"><span class="name">カレンダー</span><span class="desc">予定を記録する</span></span>
         </button>
         <button class="menu-card c-danger wide" data-screen="vault">
           <span class="icon">🔒</span>
-          <span><span class="name">セキュリティメモ</span><br><span class="desc">パスワードで保護されたメモ</span></span>
+          <span class="label"><span class="name">セキュリティメモ</span><span class="desc">パスワードで保護されたメモ</span></span>
         </button>
       </div>
     </section>
