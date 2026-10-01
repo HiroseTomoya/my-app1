@@ -1725,7 +1725,7 @@ class MultiApp(QMainWindow):
         # ボタン本体は単色ではなく、機能ごとの色で着色した木目テクスチャにする
         # (QSSのborder-imageはスケーリング品質が不安定だったため、直接描画するWoodButtonを使う)
         wood = self._get_wood_pixmap()
-        card = WoodButton(wood, face, 185, face_hover, radius)
+        card = WoodButton(wood, face, 220, face_hover, radius)
         card.setObjectName("menuCard")
         card.setCursor(QCursor(Qt.PointingHandCursor))
         card.clicked.connect(slot)
@@ -1774,6 +1774,10 @@ class MultiApp(QMainWindow):
         sub.setWordWrap(True)
         sub.setMinimumWidth(0)
         sub.setStyleSheet(f"color: rgba(255, 255, 255, 0.85); font-size: {sz(13)}px; border: none; background: transparent;")
+
+        # 木目の濃淡で文字が読みにくくならないよう、ラベルに軽い落ち影を入れてコントラストを補う
+        self._add_shadow(name, blur=round(6 * scale), dy=1, alpha=150, color="#000000")
+        self._add_shadow(sub, blur=round(5 * scale), dy=1, alpha=140, color="#000000")
 
         # 全カード共通：横並び（アイコン＋テキスト）の“背の低い”カードで、
         # 全体が縦長にならないようにする
