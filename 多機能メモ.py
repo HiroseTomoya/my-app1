@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import (
     QFont, QCursor, QImage, QDesktopServices, QColor, QPixmap, QPainter, QPen,
     QTextDocument, QTextCharFormat, QStandardItemModel, QStandardItem, QIcon,
-    QTextCursor, QFontMetrics, QPainterPath
+    QTextCursor, QFontMetrics, QPainterPath, QBitmap, QRegion
 )
 from PySide6.QtPrintSupport import QPrinter
 
@@ -265,20 +265,25 @@ class TiledBackgroundWidget(QWidget):
     def paintEvent(self, event):
         if self._pixmap and not self._pixmap.isNull():
             # 写真を敷き詰める(タイル)のではなく、アスペクト比を保ったまま
-            # ウィンドウ全体を覆うように拡大・中央寄せして描画する(CSSのbackground-size:coverと同様)
+            # ウィンドウ全体を覆うように拡大・中央寄せして描画する(CSSのbackground-size:coverと同様)。
+            # 高DPI環境でもぼやけないよう、物理ピクセル数で縮小してからdevicePixelRatioを教える
             painter = QPainter(self)
             target = self.rect()
-            scaled = self._pixmap.scaled(target.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            x = (target.width() - scaled.width()) // 2
-            y = (target.height() - scaled.height()) // 2
-            painter.drawPixmap(x, y, scaled)
+            dpr = self.devicePixelRatioF()
+            scaled = self._pixmap.scaled(target.size() * dpr, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            scaled.setDevicePixelRatio(dpr)
+            x = (target.width() - scaled.width() / dpr) // 2
+            y = (target.height() - scaled.height() / dpr) // 2
+            painter.drawPixmap(round(x), round(y), scaled)
             painter.end()
         super().paintEvent(event)
 
 
-def _paint_wood_tint(painter, rect, wood_pixmap, tint_color, tint_alpha, radius, border_color=None, border_width=1):
+def _paint_wood_tint(painter, rect, wood_pixmap, tint_color, tint_alpha, radius, border_color=None, border_width=1, dpr=1.0):
     # 角丸にクリップした領域へ木目写真をcover-fitで描き、その上に色をのせて着色する。
-    # QSSのborder-imageだと縮小時のスケーリング品質が不安定だったため、直接描画に統一する
+    # QSSのborder-imageだと縮小時のスケーリング品質が不安定だったため、直接描画に統一する。
+    # dprは画面の拡大率(devicePixelRatio)。これを掛けた物理ピクセル数で縮小してから
+    # setDevicePixelRatioしておくことで、高DPI環境でもQtが二重に引き伸ばしてぼやけさせない
     painter.setRenderHint(QPainter.Antialiasing, True)
     rf = QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5)
     path = QPainterPath()
@@ -286,10 +291,12 @@ def _paint_wood_tint(painter, rect, wood_pixmap, tint_color, tint_alpha, radius,
     painter.save()
     painter.setClipPath(path)
     if wood_pixmap and not wood_pixmap.isNull():
-        scaled = wood_pixmap.scaled(rect.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        x = (rect.width() - scaled.width()) // 2
-        y = (rect.height() - scaled.height()) // 2
-        painter.drawPixmap(x, y, scaled)
+        physical_size = rect.size() * dpr
+        scaled = wood_pixmap.scaled(physical_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        scaled.setDevicePixelRatio(dpr)
+        x = (rect.width() - scaled.width() / dpr) // 2
+        y = (rect.height() - scaled.height() / dpr) // 2
+        painter.drawPixmap(round(x), round(y), scaled)
     tint = QColor(tint_color)
     tint.setAlpha(tint_alpha)
     painter.fillRect(rect, tint)
@@ -316,7 +323,7 @@ class WoodPanel(QWidget):
         painter = QPainter(self)
         _paint_wood_tint(
             painter, self.rect(), self._wood, self._tint_color, self._tint_alpha,
-            self._radius, border_color=self._border_color,
+            self._radius, border_color=self._border_color, dpr=self.devicePixelRatioF(),
         )
         painter.end()
         super().paintEvent(event)
@@ -336,7 +343,7 @@ class WoodButton(QPushButton):
     def paintEvent(self, event):
         painter = QPainter(self)
         color = self._hover_tint_color if (self.underMouse() or self.isDown()) else self._tint_color
-        _paint_wood_tint(painter, self.rect(), self._wood, color, self._tint_alpha, self._radius)
+        _paint_wood_tint(painter, self.rect(), self._wood, color, self._tint_alpha, self._radius, dpr=self.devicePixelRatioF())
         painter.end()
         super().paintEvent(event)
 
@@ -1792,6 +1799,58 @@ class MultiApp(QMainWindow):
         self._add_shadow(base, blur=round(20 * scale), dy=round(8 * scale), alpha=36, color=dark)
         return base
 
+    def _render_title_pixmap(self, scale=1.0):
+        # 「Multi」「Memo」を装飾フォント(Arkipelago)で描画したQPixmapを作る。
+        # 筆記体フォントはスワッシュ(飾り)が通常の文字送り幅からはみ出すことがあり、
+        # CSSのpadding予測では見切れを防ぎきれなかったため、実際に大きめのキャンバスへ
+        # 描画してからインクが乗っている範囲だけを自動で切り出す(測って決める)方式にした。
+        cache = getattr(self, "_title_pixmap_cache", None)
+        if cache is None:
+            cache = self._title_pixmap_cache = {}
+        key = round(scale * 100)
+        if key in cache:
+            return cache[key]
+
+        point_size = max(1, round(52 * scale))
+        font = QFont()
+        font.setFamilies([f.strip(" '") for f in TITLE_FONT_EN.split(",")])
+        font.setPointSize(point_size)
+        font.setBold(True)
+        font.setLetterSpacing(QFont.AbsoluteSpacing, max(0.0, 1.0 * scale))
+
+        fm = QFontMetrics(font)
+        parts = [("Multi", self.colors["text_main"]), ("Memo", GRADIENTS["accent"][1])]
+        natural_w = sum(fm.horizontalAdvance(t) for t, _ in parts)
+        margin = max(24, point_size)  # スワッシュ用の逃げ代。文字サイズに応じて多めに確保する
+        canvas_w = natural_w + margin * 2
+        canvas_h = fm.height() + margin * 2
+
+        img = QImage(canvas_w, canvas_h, QImage.Format_ARGB32_Premultiplied)
+        img.fill(Qt.transparent)
+        painter = QPainter(img)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.TextAntialiasing, True)
+        painter.setFont(font)
+        x = margin
+        baseline = margin + fm.ascent()
+        for text, color in parts:
+            painter.setPen(QColor(color))
+            painter.drawText(x, baseline, text)
+            x += fm.horizontalAdvance(text)
+        painter.end()
+
+        # 実際にインクが乗っている範囲(アルファ>0)だけを切り出す
+        bitmap = QBitmap.fromImage(img.createAlphaMask())
+        bbox = QRegion(bitmap).boundingRect()
+        if bbox.isValid():
+            pad = max(2, round(4 * scale))
+            bbox = bbox.adjusted(-pad, -pad, pad, pad).intersected(img.rect())
+            img = img.copy(bbox)
+
+        pix = QPixmap.fromImage(img)
+        cache[key] = pix
+        return pix
+
     def _build_memo_masthead(self, scale=1.0):
         # ノート（メモ帳）風のタイトルカード（インデックスタブ付きでにぎやかに、scaleで拡縮）
         def sz(v):
@@ -1843,19 +1902,10 @@ class MultiApp(QMainWindow):
         txt.addWidget(date_lbl)
         txt.addSpacing(sz(3))
 
+        # タイトルは「だいたいこれくらい余白があれば足りるはず」という推測のpaddingではなく、
+        # 実際に描画した結果から文字のインクが乗っている範囲を測って切り出す(見切れを原理的に防ぐ)
         title = QLabel()
-        title.setTextFormat(Qt.RichText)
-        title.setText(
-            f"<span style='color:{self.colors['text_main']};'>Multi</span>"
-            f"<span style='color:{GRADIENTS['accent'][1]};'>Memo</span>"
-        )
-        title.setStyleSheet(f"""
-            font-family: {TITLE_FONT_EN};
-            font-size: {sz(52)}px;
-            font-weight: 800;
-            letter-spacing: 1px;
-            padding-left: {sz(46)}px;
-        """)
+        title.setPixmap(self._render_title_pixmap(scale))
         txt.addWidget(title)
 
         # 蛍光ペンで引いたようなライン + ノートの罫線
