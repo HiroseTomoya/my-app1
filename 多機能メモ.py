@@ -1892,34 +1892,26 @@ class MultiApp(QMainWindow):
         return pix
 
     def _build_memo_masthead(self, scale=1.0):
-        # ノート（メモ帳）風のタイトルカード（インデックスタブ付きでにぎやかに、scaleで拡縮）
-        def sz(v):
-            return round(v * scale)
+        # ノート（メモ帳）風のタイトルカード（イラスト背景、scaleで拡縮）
+        # カード全体をひとまわり小さくするための専用の縮小率。
+        # 以前あった「色付きインデックスタブ」は、傾いたイラストの上では
+        # 浮いて見えてしまうため廃止した
+        card_scale = scale * 0.72
+
+        def csz(v):
+            return round(v * card_scale)
 
         wrap = QWidget()
         wv = QVBoxLayout(wrap)
         wv.setContentsMargins(0, 0, 0, 0)
         wv.setSpacing(0)
 
-        # 上にちょこんと出る色付きインデックスタブ
-        tabs = QWidget()
-        tl = QHBoxLayout(tabs)
-        tl.setContentsMargins(sz(32), 0, 0, 0)
-        tl.setSpacing(sz(7))
-        for key in ("primary", "accent", "success", "warn", "info", "danger"):
-            tab = QLabel()
-            tab.setFixedSize(sz(54), sz(15))
-            tab.setStyleSheet(f"background: {grad_css(key, x2=1, y2=0)}; border: none; border-top-left-radius: 5px; border-top-right-radius: 5px;")
-            tl.addWidget(tab)
-        tl.addStretch()
-        wv.addWidget(tabs)
-
         # アプリ名(タイトル)のカードは、イラスト(assets/notebook_paper.png)を背景に敷き、
         # その上に日付・タイトル等を重ねる。イラスト側にすでにリング穴・赤い罫線・
         # マスキングテープが描かれているので、コードで描いていた分は不要になった
         paper = QWidget()
         paper.setObjectName("memoPaper")
-        paper_width = sz(820)
+        paper_width = csz(820)
         notebook_pix = self._load_notebook_pixmap(paper_width)
         stack = QStackedLayout(paper)
         stack.setStackingMode(QStackedLayout.StackAll)
@@ -1936,39 +1928,39 @@ class MultiApp(QMainWindow):
         body = QWidget()
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
-        bh.setContentsMargins(sz(115), sz(70), sz(60), sz(70))
-        bh.setSpacing(sz(20))
+        bh.setContentsMargins(csz(115), csz(70), csz(60), csz(70))
+        bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
         txt.setSpacing(0)
 
         # 日付スタンプ
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
-        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {sz(12)}px; font-weight: 700; letter-spacing: 2px;")
+        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {csz(12)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
-        txt.addSpacing(sz(3))
+        txt.addSpacing(csz(3))
 
         # タイトルは「だいたいこれくらい余白があれば足りるはず」という推測のpaddingではなく、
         # 実際に描画した結果から文字のインクが乗っている範囲を測って切り出す(見切れを原理的に防ぐ)
         title = QLabel()
-        title.setPixmap(self._render_title_pixmap(scale))
+        title.setPixmap(self._render_title_pixmap(card_scale))
         txt.addWidget(title)
 
         # 蛍光ペンで引いたようなライン + ノートの罫線
-        txt.addSpacing(sz(6))
+        txt.addSpacing(csz(6))
         hl = QFrame()
-        hl.setFixedHeight(sz(9))
+        hl.setFixedHeight(csz(9))
         hl.setStyleSheet("background-color: rgba(250, 204, 21, 0.55); border: none; border-radius: 3px;")
         txt.addWidget(hl)
-        txt.addSpacing(sz(7))
+        txt.addSpacing(csz(7))
         rule = QFrame()
         rule.setFixedHeight(2)
         rule.setStyleSheet(f"background-color: {self.PAPER_RULE}; border: none;")
         txt.addWidget(rule)
 
-        txt.addSpacing(sz(10))
+        txt.addSpacing(csz(10))
         sub = QLabel("✎  あなたの毎日を、一冊に。")
-        sub.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {sz(15)}px; letter-spacing: 1px;")
+        sub.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {csz(15)}px; letter-spacing: 1px;")
         txt.addWidget(sub)
 
         bh.addLayout(txt, stretch=1)
@@ -1977,12 +1969,12 @@ class MultiApp(QMainWindow):
         pencil = QLabel()
         pencil.setStyleSheet("background: transparent; border: none;")
         pencil.setAlignment(Qt.AlignTop | Qt.AlignRight)
-        pencil_pix = self._load_pencil_pixmap(sz(90))
+        pencil_pix = self._load_pencil_pixmap(csz(90))
         if pencil_pix is not None:
             pencil.setPixmap(pencil_pix)
         else:
             pencil.setText("✏️")
-            pencil.setStyleSheet(f"font-size: {sz(44)}px; background: transparent; border: none;")
+            pencil.setStyleSheet(f"font-size: {csz(44)}px; background: transparent; border: none;")
         bh.addWidget(pencil)
 
         stack.addWidget(body)
