@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import (
     QFont, QCursor, QImage, QDesktopServices, QColor, QPixmap, QPainter, QPen,
     QTextDocument, QTextCharFormat, QStandardItemModel, QStandardItem, QIcon,
-    QTextCursor, QFontMetrics
+    QTextCursor, QFontMetrics, QPainterPath
 )
 from PySide6.QtPrintSupport import QPrinter
 
@@ -43,11 +43,6 @@ def resource_path(relative_path):
     # 通常のスクリプト実行時はこのファイルと同じ場所から読む
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, relative_path)
-
-
-def qss_url(path):
-    # Qtのスタイルシートのurl()はバックスラッシュを解釈できないため置換する
-    return path.replace("\\", "/")
 
 
 # タイトル画面（ホーム画面のロゴ・メニューカード）だけに使う特別なフォント。
@@ -278,6 +273,71 @@ class TiledBackgroundWidget(QWidget):
             y = (target.height() - scaled.height()) // 2
             painter.drawPixmap(x, y, scaled)
             painter.end()
+        super().paintEvent(event)
+
+
+def _paint_wood_tint(painter, rect, wood_pixmap, tint_color, tint_alpha, radius, border_color=None, border_width=1):
+    # 角丸にクリップした領域へ木目写真をcover-fitで描き、その上に色をのせて着色する。
+    # QSSのborder-imageだと縮小時のスケーリング品質が不安定だったため、直接描画に統一する
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    rf = QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5)
+    path = QPainterPath()
+    path.addRoundedRect(rf, radius, radius)
+    painter.save()
+    painter.setClipPath(path)
+    if wood_pixmap and not wood_pixmap.isNull():
+        scaled = wood_pixmap.scaled(rect.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        x = (rect.width() - scaled.width()) // 2
+        y = (rect.height() - scaled.height()) // 2
+        painter.drawPixmap(x, y, scaled)
+    tint = QColor(tint_color)
+    tint.setAlpha(tint_alpha)
+    painter.fillRect(rect, tint)
+    painter.restore()
+    if border_color is not None:
+        painter.save()
+        painter.setPen(QPen(QColor(border_color), border_width))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rf, radius, radius)
+        painter.restore()
+
+
+# --- 木目写真を色でステインした、角丸の静的パネル(タイトルカードなど) ---
+class WoodPanel(QWidget):
+    def __init__(self, wood_pixmap, tint_color, tint_alpha, radius, border_color=None, parent=None):
+        super().__init__(parent)
+        self._wood = wood_pixmap
+        self._tint_color = tint_color
+        self._tint_alpha = tint_alpha
+        self._radius = radius
+        self._border_color = border_color
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        _paint_wood_tint(
+            painter, self.rect(), self._wood, self._tint_color, self._tint_alpha,
+            self._radius, border_color=self._border_color,
+        )
+        painter.end()
+        super().paintEvent(event)
+
+
+# --- 木目写真を色でステインした、角丸の押しボタン(ホバー/押下で濃さが変わる) ---
+class WoodButton(QPushButton):
+    def __init__(self, wood_pixmap, tint_color, tint_alpha, hover_tint_color, radius, parent=None):
+        super().__init__(parent)
+        self._wood = wood_pixmap
+        self._tint_color = tint_color
+        self._tint_alpha = tint_alpha
+        self._hover_tint_color = hover_tint_color
+        self._radius = radius
+        self.setStyleSheet("border: none; background: transparent; text-align: left;")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        color = self._hover_tint_color if (self.underMouse() or self.isDown()) else self._tint_color
+        _paint_wood_tint(painter, self.rect(), self._wood, color, self._tint_alpha, self._radius)
+        painter.end()
         super().paintEvent(event)
 
 
@@ -1351,34 +1411,6 @@ class MultiApp(QMainWindow):
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
 
-    def _get_tinted_wood_path(self, key, hex_color, alpha, size=(1280, 440)):
-        # 木目写真を指定色で着色(ステイン)したテクスチャを生成し、.assetsにキャッシュする。
-        # ボタンやタイトルカードをQSSのborder-imageで木目調にするために使う
-        w, h = size
-        fname = f"wood_tint_{key}_{alpha}_{w}x{h}.png"
-        path = os.path.join(self.ASSET_DIR, fname)
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            return path
-        wood = self._get_wood_pixmap()
-        if wood is None:
-            return None
-        try:
-            os.makedirs(self.ASSET_DIR, exist_ok=True)
-            scaled = wood.scaled(w, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            canvas = QPixmap(w, h)
-            painter = QPainter(canvas)
-            x = (scaled.width() - w) // 2
-            y = (scaled.height() - h) // 2
-            painter.drawPixmap(-x, -y, scaled)
-            tint = QColor(hex_color)
-            tint.setAlpha(alpha)
-            painter.fillRect(canvas.rect(), tint)
-            painter.end()
-            canvas.save(path, "PNG")
-        except OSError:
-            return None
-        return path
-
     def _new_screen(self, object_name="screenBg"):
         # 各画面のルートウィジェット。木目の壁紙を全画面共通で敷く
         pix = self._get_wood_pixmap()
@@ -1683,33 +1715,13 @@ class MultiApp(QMainWindow):
         base_layout.setSpacing(0)
         base.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        card = QPushButton()
+        # ボタン本体は単色ではなく、機能ごとの色で着色した木目テクスチャにする
+        # (QSSのborder-imageはスケーリング品質が不安定だったため、直接描画するWoodButtonを使う)
+        wood = self._get_wood_pixmap()
+        card = WoodButton(wood, face, 185, face_hover, radius)
         card.setObjectName("menuCard")
         card.setCursor(QCursor(Qt.PointingHandCursor))
         card.clicked.connect(slot)
-
-        # ボタン本体は単色ではなく、機能ごとの色で着色した木目テクスチャにする
-        color_key = color.lstrip("#")
-        wood_normal = self._get_tinted_wood_path(f"card_{color_key}", face, alpha=185)
-        wood_hover = self._get_tinted_wood_path(f"cardhover_{color_key}", face_hover, alpha=185)
-        if wood_normal and wood_hover:
-            fill_css = f"border-image: url({qss_url(wood_normal)}) 0 0 0 0 stretch stretch;"
-            fill_hover_css = f"border-image: url({qss_url(wood_hover)}) 0 0 0 0 stretch stretch;"
-        else:
-            fill_css = f"background-color: {face};"
-            fill_hover_css = f"background-color: {face_hover};"
-
-        card.setStyleSheet(f"""
-            QPushButton#menuCard {{
-                {fill_css}
-                border: none;
-                border-radius: {radius}px;
-                text-align: left;
-            }}
-            QPushButton#menuCard:hover {{
-                {fill_hover_css}
-            }}
-        """)
 
         # 押した瞬間だけ台座の見え幅を詰めて、実際に沈み込む動きをつける
         def _press():
@@ -1803,17 +1815,10 @@ class MultiApp(QMainWindow):
         tl.addStretch()
         wv.addWidget(tabs)
 
-        paper = self._panel("memoPaper")
         # アプリ名(タイトル)のカードも、無地のクリーム色ではなく木目を薄く透かした色にする
-        wood_paper = self._get_tinted_wood_path("paper", self.PAPER_BG, alpha=165, size=(1800, 520))
-        if wood_paper:
-            paper.setStyleSheet(f"""
-                QWidget#memoPaper {{
-                    border-image: url({qss_url(wood_paper)}) 0 0 0 0 stretch stretch;
-                    border: 1px solid {self.PAPER_BORDER};
-                    border-radius: 16px;
-                }}
-            """)
+        # (QSSのborder-imageはスケーリング品質が不安定だったため、直接描画するWoodPanelを使う)
+        paper = WoodPanel(self._get_wood_pixmap(), self.PAPER_BG, 165, 16, border_color=self.PAPER_BORDER)
+        paper.setObjectName("memoPaper")
         pv = QVBoxLayout(paper)
         pv.setContentsMargins(0, 0, 0, 0)
         pv.setSpacing(0)
