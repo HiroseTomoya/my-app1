@@ -1955,23 +1955,30 @@ class MultiApp(QMainWindow):
         # タイトルは「だいたいこれくらい余白があれば足りるはず」という推測のpaddingではなく、
         # 実際に描画した結果から文字のインクが乗っている範囲を測って切り出す(見切れを原理的に防ぐ)
         title = QLabel()
-        title.setPixmap(self._render_title_pixmap(text_scale))
+        title_pix = self._render_title_pixmap(text_scale)
+        title.setPixmap(title_pix)
         txt.addWidget(title)
 
-        # 蛍光ペンで引いたようなライン + ノートの罫線
+        # 蛍光ペンで引いたようなライン + ノートの罫線。
+        # 列幅いっぱいに伸ばすと、傾いた紙の右端からはみ出すことがあるため、
+        # タイトル文字の実際の幅に合わせる
+        line_width = max(1, title_pix.width())
         txt.addSpacing(tsz(6))
         hl = QFrame()
         hl.setFixedHeight(tsz(9))
+        hl.setFixedWidth(line_width)
         hl.setStyleSheet("background-color: rgba(250, 204, 21, 0.55); border: none; border-radius: 3px;")
         txt.addWidget(hl)
         txt.addSpacing(tsz(7))
         rule = QFrame()
         rule.setFixedHeight(2)
+        rule.setFixedWidth(line_width)
         rule.setStyleSheet(f"background-color: {self.PAPER_RULE}; border: none;")
         txt.addWidget(rule)
 
         txt.addSpacing(tsz(10))
         sub = QLabel("✎  あなたの毎日を、一冊に。")
+        sub.setWordWrap(True)  # 紙の幅を超えそうな場合に横へはみ出さず折り返す
         sub.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {tsz(17)}px; letter-spacing: 1px;")
         txt.addWidget(sub)
 
