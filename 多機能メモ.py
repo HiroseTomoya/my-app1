@@ -8,7 +8,6 @@ import uuid
 import math
 import struct
 import re
-import random
 from datetime import datetime
 import calendar #カレンダー機能をモジュール
 
@@ -256,8 +255,14 @@ class TiledBackgroundWidget(QWidget):
 
     def paintEvent(self, event):
         if self._pixmap and not self._pixmap.isNull():
+            # 写真を敷き詰める(タイル)のではなく、アスペクト比を保ったまま
+            # ウィンドウ全体を覆うように拡大・中央寄せして描画する(CSSのbackground-size:coverと同様)
             painter = QPainter(self)
-            painter.drawTiledPixmap(self.rect(), self._pixmap)
+            target = self.rect()
+            scaled = self._pixmap.scaled(target.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            x = (target.width() - scaled.width()) // 2
+            y = (target.height() - scaled.height()) // 2
+            painter.drawPixmap(x, y, scaled)
             painter.end()
         super().paintEvent(event)
 
@@ -1324,50 +1329,11 @@ class MultiApp(QMainWindow):
     PAPER_RULE = "#D6E0F1"
     PAPER_MARGIN = "rgba(225, 29, 72, 0.42)"
 
-    def _ensure_wood_texture(self):
-        # スタート画面の背景用に、木目調のタイル画像を生成してキャッシュする
-        path = os.path.join(self.ASSET_DIR, "wood_bg.png")
-        # 生成が途中で中断される等でファイルが壊れている(0バイト等)場合は
-        # 再生成する。存在チェックだけだと壊れたキャッシュを使い続けてしまう
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            return path
-        try:
-            os.makedirs(self.ASSET_DIR, exist_ok=True)
-            w, h = 320, 320
-            base = QColor("#C89A6A")
-            pix = QPixmap(w, h)
-            pix.fill(base)
-            painter = QPainter(pix)
-            painter.setRenderHint(QPainter.Antialiasing, True)
-            rnd = random.Random(7)
-            y = 0.0
-            while y < h:
-                band = rnd.uniform(7, 17)
-                shade = rnd.choice([-32, -22, -14, -6, 8, 16, 24, 30])
-                col = QColor(
-                    max(0, min(255, base.red() + shade)),
-                    max(0, min(255, base.green() + shade)),
-                    max(0, min(255, base.blue() + shade)),
-                )
-                col.setAlpha(rnd.randint(55, 115))
-                painter.fillRect(QRectF(0, y, w, band), col)
-                for _ in range(rnd.randint(0, 2)):
-                    ly = y + rnd.uniform(0, band)
-                    grain = QColor(92, 58, 30, rnd.randint(25, 55))
-                    painter.setPen(QPen(grain, 1))
-                    painter.drawLine(QPointF(0, ly), QPointF(w, ly + rnd.uniform(-3, 3)))
-                y += band
-            painter.end()
-            pix.save(path, "PNG")
-        except OSError:
-            return None
-        return path
-
     def _get_wood_pixmap(self):
-        # 木目テクスチャは一度だけ読み込んでキャッシュする
+        # 背景の木目は実写真(assets/wood_bg.jpg)を使う。一度読み込んだら使い回す
         if not hasattr(self, "_wood_pixmap_cache"):
-            path = self._ensure_wood_texture()
-            pix = QPixmap(path) if path else None
+            path = resource_path(os.path.join("assets", "wood_bg.jpg"))
+            pix = QPixmap(path) if os.path.exists(path) else None
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
 
