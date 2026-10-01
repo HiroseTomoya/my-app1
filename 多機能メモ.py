@@ -45,6 +45,11 @@ def resource_path(relative_path):
     return os.path.join(base, relative_path)
 
 
+def qss_url(path):
+    # Qtのスタイルシートのurl()はバックスラッシュを解釈できないため置換する
+    return path.replace("\\", "/")
+
+
 # タイトル画面（ホーム画面のロゴ・メニューカード）だけに使う特別なフォント。
 # 英字用と日本語用を1つのfont-familyリストにまとめてしまうと、Arkipelago(英字の
 # 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
@@ -1346,6 +1351,34 @@ class MultiApp(QMainWindow):
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
 
+    def _get_tinted_wood_path(self, key, hex_color, alpha, size=(640, 220)):
+        # 木目写真を指定色で着色(ステイン)したテクスチャを生成し、.assetsにキャッシュする。
+        # ボタンやタイトルカードをQSSのborder-imageで木目調にするために使う
+        w, h = size
+        fname = f"wood_tint_{key}_{alpha}_{w}x{h}.png"
+        path = os.path.join(self.ASSET_DIR, fname)
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            return path
+        wood = self._get_wood_pixmap()
+        if wood is None:
+            return None
+        try:
+            os.makedirs(self.ASSET_DIR, exist_ok=True)
+            scaled = wood.scaled(w, h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            canvas = QPixmap(w, h)
+            painter = QPainter(canvas)
+            x = (scaled.width() - w) // 2
+            y = (scaled.height() - h) // 2
+            painter.drawPixmap(-x, -y, scaled)
+            tint = QColor(hex_color)
+            tint.setAlpha(alpha)
+            painter.fillRect(canvas.rect(), tint)
+            painter.end()
+            canvas.save(path, "PNG")
+        except OSError:
+            return None
+        return path
+
     def _new_screen(self, object_name="screenBg"):
         # 各画面のルートウィジェット。木目の壁紙を全画面共通で敷く
         pix = self._get_wood_pixmap()
@@ -1654,15 +1687,27 @@ class MultiApp(QMainWindow):
         card.setObjectName("menuCard")
         card.setCursor(QCursor(Qt.PointingHandCursor))
         card.clicked.connect(slot)
+
+        # ボタン本体は単色ではなく、機能ごとの色で着色した木目テクスチャにする
+        color_key = color.lstrip("#")
+        wood_normal = self._get_tinted_wood_path(f"card_{color_key}", face, alpha=185)
+        wood_hover = self._get_tinted_wood_path(f"cardhover_{color_key}", face_hover, alpha=185)
+        if wood_normal and wood_hover:
+            fill_css = f"border-image: url({qss_url(wood_normal)}) 0 0 0 0 stretch stretch;"
+            fill_hover_css = f"border-image: url({qss_url(wood_hover)}) 0 0 0 0 stretch stretch;"
+        else:
+            fill_css = f"background-color: {face};"
+            fill_hover_css = f"background-color: {face_hover};"
+
         card.setStyleSheet(f"""
             QPushButton#menuCard {{
-                background-color: {face};
+                {fill_css}
                 border: none;
                 border-radius: {radius}px;
                 text-align: left;
             }}
             QPushButton#menuCard:hover {{
-                background-color: {face_hover};
+                {fill_hover_css}
             }}
         """)
 
@@ -1759,6 +1804,16 @@ class MultiApp(QMainWindow):
         wv.addWidget(tabs)
 
         paper = self._panel("memoPaper")
+        # アプリ名(タイトル)のカードも、無地のクリーム色ではなく木目を薄く透かした色にする
+        wood_paper = self._get_tinted_wood_path("paper", self.PAPER_BG, alpha=165, size=(900, 260))
+        if wood_paper:
+            paper.setStyleSheet(f"""
+                QWidget#memoPaper {{
+                    border-image: url({qss_url(wood_paper)}) 0 0 0 0 stretch stretch;
+                    border: 1px solid {self.PAPER_BORDER};
+                    border-radius: 16px;
+                }}
+            """)
         pv = QVBoxLayout(paper)
         pv.setContentsMargins(0, 0, 0, 0)
         pv.setSpacing(0)
