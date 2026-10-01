@@ -1901,6 +1901,13 @@ class MultiApp(QMainWindow):
         def csz(v):
             return round(v * card_scale)
 
+        # 文字(日付・タイトル・サブタイトル)はカード自体より大きめの縮小率で描く。
+        # カードを小さく保って1画面に収めつつ、文字だけは読みやすいサイズにするため
+        text_scale = scale * 0.85
+
+        def tsz(v):
+            return round(v * text_scale)
+
         wrap = QWidget()
         wv = QVBoxLayout(wrap)
         wv.setContentsMargins(0, 0, 0, 0)
@@ -1941,31 +1948,31 @@ class MultiApp(QMainWindow):
 
         # 日付スタンプ
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
-        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {csz(12)}px; font-weight: 700; letter-spacing: 2px;")
+        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {tsz(14)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
-        txt.addSpacing(csz(3))
+        txt.addSpacing(tsz(3))
 
         # タイトルは「だいたいこれくらい余白があれば足りるはず」という推測のpaddingではなく、
         # 実際に描画した結果から文字のインクが乗っている範囲を測って切り出す(見切れを原理的に防ぐ)
         title = QLabel()
-        title.setPixmap(self._render_title_pixmap(card_scale))
+        title.setPixmap(self._render_title_pixmap(text_scale))
         txt.addWidget(title)
 
         # 蛍光ペンで引いたようなライン + ノートの罫線
-        txt.addSpacing(csz(6))
+        txt.addSpacing(tsz(6))
         hl = QFrame()
-        hl.setFixedHeight(csz(9))
+        hl.setFixedHeight(tsz(9))
         hl.setStyleSheet("background-color: rgba(250, 204, 21, 0.55); border: none; border-radius: 3px;")
         txt.addWidget(hl)
-        txt.addSpacing(csz(7))
+        txt.addSpacing(tsz(7))
         rule = QFrame()
         rule.setFixedHeight(2)
         rule.setStyleSheet(f"background-color: {self.PAPER_RULE}; border: none;")
         txt.addWidget(rule)
 
-        txt.addSpacing(csz(10))
+        txt.addSpacing(tsz(10))
         sub = QLabel("✎  あなたの毎日を、一冊に。")
-        sub.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {csz(15)}px; letter-spacing: 1px;")
+        sub.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {tsz(17)}px; letter-spacing: 1px;")
         txt.addWidget(sub)
 
         bh.addLayout(txt, stretch=1)
