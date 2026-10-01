@@ -50,7 +50,9 @@ def resource_path(relative_path):
 # 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
 # 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
 TITLE_FONT_EN = "'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
-TITLE_FONT_JA = "'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
+# 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
+# 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
+TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
 
 
 def title_font_family(text):
