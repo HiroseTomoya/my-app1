@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLayout,
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
     QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout, QFileDialog,
-    QGraphicsDropShadowEffect, QSizePolicy, QFrame, QListWidget, QAbstractItemView,
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QSizePolicy, QFrame, QListWidget, QAbstractItemView,
     QListWidgetItem, QListView, QStyledItemDelegate, QStyle, QStackedLayout
 )
 from PySide6.QtGui import (
@@ -1817,8 +1817,8 @@ class MultiApp(QMainWindow):
 
         # 全カード共通：横並び（アイコン＋テキスト）の“背の低い”カードで、
         # 全体が縦長にならないようにする
-        card.setMinimumHeight(sz(98 if wide else 92))
-        card.setMaximumHeight(sz(124 if wide else 132))
+        card.setMinimumHeight(sz(82 if wide else 76))
+        card.setMaximumHeight(sz(104 if wide else 100))
         card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         h = QHBoxLayout(card)
         h.setContentsMargins(sz(30) if wide else sz(18), sz(12), sz(34) if wide else sz(18), sz(12))
@@ -1896,7 +1896,7 @@ class MultiApp(QMainWindow):
         # カード全体をひとまわり小さくするための専用の縮小率。
         # 以前あった「色付きインデックスタブ」は、傾いたイラストの上では
         # 浮いて見えてしまうため廃止した
-        card_scale = scale * 0.72
+        card_scale = scale * 0.56
 
         def csz(v):
             return round(v * card_scale)
@@ -1923,12 +1923,17 @@ class MultiApp(QMainWindow):
         if notebook_pix is not None:
             bg_label.setPixmap(notebook_pix)
             paper.setFixedHeight(notebook_pix.height())
+        # 周り(木目の背景)に少し馴染むよう、イラストをわずかに透かす(文字は別レイヤーなので影響しない)
+        bg_opacity = QGraphicsOpacityEffect(bg_label)
+        bg_opacity.setOpacity(0.82)
+        bg_label.setGraphicsEffect(bg_opacity)
         stack.addWidget(bg_label)
 
         body = QWidget()
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
-        bh.setContentsMargins(csz(115), csz(70), csz(60), csz(70))
+        # 上の余白はリング穴にかぶらないよう広めに取る(イラスト上部のリング穴を避ける)
+        bh.setContentsMargins(csz(115), csz(150), csz(60), csz(70))
         bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
@@ -2006,22 +2011,22 @@ class MultiApp(QMainWindow):
         holder = QWidget()
         holder.setStyleSheet("background: transparent;")
         outer_layout = QVBoxLayout(holder)
-        outer_layout.setContentsMargins(0, sz(10), 0, sz(18))
+        outer_layout.setContentsMargins(0, sz(4), 0, sz(8))
         outer_layout.addStretch()
 
         container = QWidget()
         container.setMaximumWidth(sz(820))
         container.setMinimumWidth(440)
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(sz(38), sz(20), sz(38), sz(26))
+        layout.setContentsMargins(sz(38), sz(10), sz(38), sz(14))
         layout.setSpacing(0)
 
         layout.addWidget(self._build_memo_masthead(scale=scale))
-        layout.addSpacing(sz(20))
+        layout.addSpacing(sz(12))
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(sz(22))
-        grid.setVerticalSpacing(sz(18))
+        grid.setVerticalSpacing(sz(12))
 
         opts = [
             ("⏱️", "timer", "タイマー", "集中時間を計る", lambda: self.change_screen("timer"), self.colors["primary"]),
