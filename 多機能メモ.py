@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
     QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout, QFileDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QFrame, QListWidget, QAbstractItemView,
-    QListWidgetItem, QListView, QStyledItemDelegate, QStyle
+    QListWidgetItem, QListView, QStyledItemDelegate, QStyle, QStackedLayout
 )
 from PySide6.QtGui import (
     QFont, QCursor, QImage, QDesktopServices, QColor, QPixmap, QPainter, QPen,
@@ -1553,6 +1553,24 @@ class MultiApp(QMainWindow):
         cache[height] = pix
         return pix
 
+    def _load_notebook_pixmap(self, width):
+        # タイトルカードの背景イラスト(assets/notebook_paper.png)を指定の幅にあわせて縮小する
+        if width <= 0:
+            return None
+        cache = getattr(self, "_notebook_pixmap_cache", None)
+        if cache is None:
+            cache = self._notebook_pixmap_cache = {}
+        if width in cache:
+            return cache[width]
+        path = resource_path(os.path.join("assets", "notebook_paper.png"))
+        pix = None
+        if os.path.exists(path):
+            loaded = QPixmap(path)
+            if not loaded.isNull():
+                pix = loaded.scaledToWidth(width, Qt.SmoothTransformation)
+        cache[width] = pix
+        return pix
+
     def _make_header(self, icon, title, accent, back_slot=None, back_text="←  戻る", icon_file=None):
         bar = QWidget()
         h = QHBoxLayout(bar)
@@ -1896,24 +1914,30 @@ class MultiApp(QMainWindow):
         tl.addStretch()
         wv.addWidget(tabs)
 
-        # アプリ名(タイトル)のカードも、無地のクリーム色ではなく木目を薄く透かした色にする
-        # (QSSのborder-imageはスケーリング品質が不安定だったため、直接描画するWoodPanelを使う)
-        paper = WoodPanel(self._get_wood_pixmap(), self.PAPER_BG, 165, 16, border_color=self.PAPER_BORDER)
+        # アプリ名(タイトル)のカードは、イラスト(assets/notebook_paper.png)を背景に敷き、
+        # その上に日付・タイトル等を重ねる。イラスト側にすでにリング穴・赤い罫線・
+        # マスキングテープが描かれているので、コードで描いていた分は不要になった
+        paper = QWidget()
         paper.setObjectName("memoPaper")
-        pv = QVBoxLayout(paper)
-        pv.setContentsMargins(0, 0, 0, 0)
-        pv.setSpacing(0)
-        pv.addWidget(self._ring_binding(count=14, pad=24, scale=scale))
+        paper_width = sz(820)
+        notebook_pix = self._load_notebook_pixmap(paper_width)
+        stack = QStackedLayout(paper)
+        stack.setStackingMode(QStackedLayout.StackAll)
+        stack.setContentsMargins(0, 0, 0, 0)
+
+        bg_label = QLabel()
+        bg_label.setStyleSheet("background: transparent; border: none;")
+        bg_label.setAlignment(Qt.AlignCenter)
+        if notebook_pix is not None:
+            bg_label.setPixmap(notebook_pix)
+            paper.setFixedHeight(notebook_pix.height())
+        stack.addWidget(bg_label)
 
         body = QWidget()
+        body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
-        bh.setContentsMargins(sz(32), sz(10), sz(32), sz(18))
+        bh.setContentsMargins(sz(115), sz(70), sz(60), sz(70))
         bh.setSpacing(sz(20))
-
-        margin_line = QFrame()
-        margin_line.setFixedWidth(sz(3))
-        margin_line.setStyleSheet(f"background-color: {self.PAPER_MARGIN}; border: none;")
-        bh.addWidget(margin_line)
 
         txt = QVBoxLayout()
         txt.setSpacing(0)
@@ -1961,10 +1985,9 @@ class MultiApp(QMainWindow):
             pencil.setStyleSheet(f"font-size: {sz(44)}px; background: transparent; border: none;")
         bh.addWidget(pencil)
 
-        pv.addWidget(body)
+        stack.addWidget(body)
+        stack.setCurrentWidget(body)  # StackAllでも「カレント」を最前面にする必要がある
         wv.addWidget(paper)
-
-        self._add_shadow(paper, blur=round(32 * scale), dy=round(13 * scale), alpha=26)
         return wrap
 
     def create_selector_screen(self, scale=1.0):
