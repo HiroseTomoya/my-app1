@@ -1351,7 +1351,7 @@ class MultiApp(QMainWindow):
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
 
-    def _get_tinted_wood_path(self, key, hex_color, alpha, size=(640, 220)):
+    def _get_tinted_wood_path(self, key, hex_color, alpha, size=(1280, 440)):
         # 木目写真を指定色で着色(ステイン)したテクスチャを生成し、.assetsにキャッシュする。
         # ボタンやタイトルカードをQSSのborder-imageで木目調にするために使う
         w, h = size
@@ -1805,7 +1805,7 @@ class MultiApp(QMainWindow):
 
         paper = self._panel("memoPaper")
         # アプリ名(タイトル)のカードも、無地のクリーム色ではなく木目を薄く透かした色にする
-        wood_paper = self._get_tinted_wood_path("paper", self.PAPER_BG, alpha=165, size=(900, 260))
+        wood_paper = self._get_tinted_wood_path("paper", self.PAPER_BG, alpha=165, size=(1800, 520))
         if wood_paper:
             paper.setStyleSheet(f"""
                 QWidget#memoPaper {{
@@ -1849,7 +1849,7 @@ class MultiApp(QMainWindow):
             font-size: {sz(52)}px;
             font-weight: 800;
             letter-spacing: 1px;
-            padding-left: {sz(14)}px;
+            padding-left: {sz(46)}px;
         """)
         txt.addWidget(title)
 
