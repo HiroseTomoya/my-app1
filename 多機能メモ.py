@@ -1932,7 +1932,7 @@ class MultiApp(QMainWindow):
             paper.setFixedHeight(notebook_pix.height())
         # 周り(木目の背景)に少し馴染むよう、イラストをわずかに透かす(文字は別レイヤーなので影響しない)
         bg_opacity = QGraphicsOpacityEffect(bg_label)
-        bg_opacity.setOpacity(0.82)
+        bg_opacity.setOpacity(0.94)
         bg_label.setGraphicsEffect(bg_opacity)
         stack.addWidget(bg_label)
 
