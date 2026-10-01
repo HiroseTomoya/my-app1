@@ -1413,7 +1413,7 @@ class MultiApp(QMainWindow):
     def _get_wood_pixmap(self):
         # 背景の木目は実写真(assets/wood_bg.jpg)を使う。一度読み込んだら使い回す
         if not hasattr(self, "_wood_pixmap_cache"):
-            path = resource_path(os.path.join("assets", "wood_bg.png"))
+            path = resource_path(os.path.join("assets", "wood_bg.jpg"))
             pix = QPixmap(path) if os.path.exists(path) else None
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
