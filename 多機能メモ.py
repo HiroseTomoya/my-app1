@@ -1535,6 +1535,24 @@ class MultiApp(QMainWindow):
         cache[key] = pix
         return pix
 
+    def _load_pencil_pixmap(self, height):
+        # タイトルカード右上の鉛筆イラスト(assets/pencil.png)を指定の高さにあわせて縮小する
+        if height <= 0:
+            return None
+        cache = getattr(self, "_pencil_pixmap_cache", None)
+        if cache is None:
+            cache = self._pencil_pixmap_cache = {}
+        if height in cache:
+            return cache[height]
+        path = resource_path(os.path.join("assets", "pencil.png"))
+        pix = None
+        if os.path.exists(path):
+            loaded = QPixmap(path)
+            if not loaded.isNull():
+                pix = loaded.scaledToHeight(height, Qt.SmoothTransformation)
+        cache[height] = pix
+        return pix
+
     def _make_header(self, icon, title, accent, back_slot=None, back_text="←  戻る", icon_file=None):
         bar = QWidget()
         h = QHBoxLayout(bar)
@@ -1932,9 +1950,15 @@ class MultiApp(QMainWindow):
         bh.addLayout(txt, stretch=1)
 
         # 右側に鉛筆のイラスト
-        pencil = QLabel("✏️")
-        pencil.setStyleSheet(f"font-size: {sz(44)}px; background: transparent; border: none;")
+        pencil = QLabel()
+        pencil.setStyleSheet("background: transparent; border: none;")
         pencil.setAlignment(Qt.AlignTop | Qt.AlignRight)
+        pencil_pix = self._load_pencil_pixmap(sz(90))
+        if pencil_pix is not None:
+            pencil.setPixmap(pencil_pix)
+        else:
+            pencil.setText("✏️")
+            pencil.setStyleSheet(f"font-size: {sz(44)}px; background: transparent; border: none;")
         bh.addWidget(pencil)
 
         pv.addWidget(body)
