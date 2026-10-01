@@ -46,6 +46,20 @@ def resource_path(relative_path):
     return os.path.join(base, relative_path)
 
 
+# アプリ全体のフォント方針: 英字は「Ink Free」、日本語は「ふい字」。
+# 未installの場合に備えて、Meiryo UI等の標準フォントもフォールバックに残す。
+FONT_FAMILIES = ["Ink Free", "ふい字", "Meiryo UI", "Segoe UI", "Yu Gothic UI", "sans-serif"]
+
+
+def app_font(point_size=None, bold=False):
+    f = QFont()
+    f.setFamilies(FONT_FAMILIES)
+    if point_size is not None:
+        f.setPointSize(point_size)
+    f.setBold(bold)
+    return f
+
+
 # --- タイマー音: 周波数パターンからWAVデータを合成 ---
 # 各パターンは (周波数Hz, 長さms) のリスト。周波数0は無音。
 SOUND_PATTERNS = {
@@ -343,7 +357,7 @@ class StyledButton(QPushButton):
             QPushButton {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {base_color});
                 color: white;
-                font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+                font-family: 'Ink Free', 'ふい字', 'Meiryo UI', 'Segoe UI', sans-serif;
                 font-size: {font_size};
                 font-weight: 700;
                 border-radius: 13px;
@@ -382,7 +396,7 @@ def export_note_to_pdf(parent, title, text):
 
     html_body = esc(text).replace("\n", "<br>")
     doc = QTextDocument()
-    doc.setDefaultFont(QFont("Meiryo UI", 11))
+    doc.setDefaultFont(app_font(11))
     doc.setHtml(
         f"<h2 style='margin-bottom:10px;'>{esc(title)}</h2>"
         f"<div style='font-size:11pt; line-height:1.7;'>{html_body}</div>"
@@ -471,7 +485,7 @@ def render_function_graph(expr, x_min, x_max, width=520, height=340):
     x_step = nice_step(x_max - x_min)
     y_step = nice_step(y_max - y_min)
 
-    font = QFont("Meiryo UI", 8)
+    font = app_font(8)
     painter.setFont(font)
     fm = QFontMetrics(font)
 
@@ -795,7 +809,7 @@ class StyledInputDialog(QDialog):
             background: transparent;
             border: none;
             color: {COLORS['text_main']};
-            font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+            font-family: 'Ink Free', 'ふい字', 'Meiryo UI', 'Segoe UI', sans-serif;
             font-size: 15px;
             selection-background-color: #BFDBFE;
         """
@@ -1209,7 +1223,7 @@ class MultiApp(QMainWindow):
         self.colors = dict(COLORS)
         self.setStyleSheet(f"""
             * {{
-                font-family: 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+                font-family: 'Ink Free', 'ふい字', 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
                 font-size: 15px;
             }}
             QMainWindow {{
@@ -1719,7 +1733,7 @@ class MultiApp(QMainWindow):
         name.setMinimumWidth(0)
         name.setStyleSheet(f"""
             color: #FFFFFF;
-            font-family: 'Century Gothic', 'Trebuchet MS', 'Segoe UI Semibold', 'Yu Gothic UI', sans-serif;
+            font-family: 'Ink Free', 'ふい字', 'Century Gothic', 'Trebuchet MS', 'Segoe UI Semibold', 'Yu Gothic UI', sans-serif;
             font-size: {sz(23 if wide else 17)}px;
             font-weight: 800;
             letter-spacing: 0.5px;
@@ -1810,7 +1824,7 @@ class MultiApp(QMainWindow):
             f"<span style='color:{GRADIENTS['accent'][1]};'>Memo</span>"
         )
         title.setStyleSheet(f"""
-            font-family: 'Segoe UI', 'Meiryo UI', sans-serif;
+            font-family: 'Ink Free', 'ふい字', 'Segoe UI', 'Meiryo UI', sans-serif;
             font-size: {sz(52)}px;
             font-weight: 800;
             letter-spacing: 1px;
@@ -2181,7 +2195,7 @@ class MultiApp(QMainWindow):
         # テキストエリア（ノート風パネルに載せる = メモ帳らしく）
         paper, paper_content = self._notebook_panel("memoPage")
         self.memo_text_widget = MemoTextEdit()
-        self.memo_text_widget.setFont(QFont("Meiryo UI", 15))
+        self.memo_text_widget.setFont(app_font(15))
         self.memo_text_widget.setPlaceholderText("ここにメモを入力...（画像はCtrl+Vで添付できます）")
         self.memo_text_widget.setFrameShape(QFrame.NoFrame)
         self.memo_text_widget.setStyleSheet(f"""
@@ -2655,7 +2669,7 @@ class MultiApp(QMainWindow):
 
         paper, paper_content = self._notebook_panel("notePage")
         self.note_content_widget = NoteTextEdit()
-        self.note_content_widget.setFont(QFont("Meiryo UI", 15))
+        self.note_content_widget.setFont(app_font(15))
         self.note_content_widget.setPlaceholderText("この回の講義内容やメモを入力...")
         self.note_content_widget.setToolTip("挿入したスケッチ／グラフはダブルクリックで削除できます")
         self.note_content_widget.setFrameShape(QFrame.NoFrame)
