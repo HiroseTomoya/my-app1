@@ -1756,7 +1756,7 @@ class MultiApp(QMainWindow):
         base_layout = QVBoxLayout(base)
         base_layout.setContentsMargins(0, 0, 0, depth)
         base_layout.setSpacing(0)
-        base.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        base.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         # ボタン本体は単色ではなく、機能ごとの色で着色した木目テクスチャにする
         # (QSSのborder-imageはスケーリング品質が不安定だったため、直接描画するWoodButtonを使う)
@@ -1815,11 +1815,11 @@ class MultiApp(QMainWindow):
         self._add_shadow(name, blur=round(6 * scale), dy=1, alpha=150, color="#000000")
         self._add_shadow(sub, blur=round(5 * scale), dy=1, alpha=140, color="#000000")
 
-        # 全カード共通：横並び（アイコン＋テキスト）の“背の低い”カードで、
-        # 全体が縦長にならないようにする
+        # 全カード共通：横並び（アイコン＋テキスト）の“背の低い”カードが基本だが、
+        # 「セキュリティメモ」のように文字が2行に折り返す場合は上限を設けず
+        # カードを伸ばして文字が重ならないようにする(最大高さの指定はしない)
         card.setMinimumHeight(sz(82 if wide else 76))
-        card.setMaximumHeight(sz(104 if wide else 100))
-        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         h = QHBoxLayout(card)
         h.setContentsMargins(sz(30) if wide else sz(18), sz(12), sz(34) if wide else sz(18), sz(12))
         h.setSpacing(sz(16) if wide else sz(10))
@@ -2023,7 +2023,7 @@ class MultiApp(QMainWindow):
 
         container = QWidget()
         container.setMaximumWidth(sz(820))
-        container.setMinimumWidth(440)
+        container.setMinimumWidth(520)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(sz(38), sz(10), sz(38), sz(14))
         layout.setSpacing(0)
