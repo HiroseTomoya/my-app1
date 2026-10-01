@@ -46,8 +46,15 @@ def resource_path(relative_path):
 
 
 # タイトル画面（ホーム画面のロゴ・メニューカード）だけに使う特別なフォント。
-# 英字は「Arkipelago」、日本語は「ふい字」優先。未インストールなら通常フォントに戻る。
-TITLE_FONT_FAMILIES = "'Arkipelago', 'ふい字', 'Century Gothic', 'Trebuchet MS', 'Segoe UI Semibold', 'Yu Gothic UI', sans-serif"
+# 英字用と日本語用を1つのfont-familyリストにまとめてしまうと、Arkipelago(英字の
+# 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
+# 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
+TITLE_FONT_EN = "'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
+TITLE_FONT_JA = "'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
+
+
+def title_font_family(text):
+    return TITLE_FONT_EN if text.isascii() else TITLE_FONT_JA
 
 
 # --- タイマー音: 周波数パターンからWAVデータを合成 ---
@@ -1332,7 +1339,7 @@ class MultiApp(QMainWindow):
     def _get_wood_pixmap(self):
         # 背景の木目は実写真(assets/wood_bg.jpg)を使う。一度読み込んだら使い回す
         if not hasattr(self, "_wood_pixmap_cache"):
-            path = resource_path(os.path.join("assets", "wood_bg.jpg"))
+            path = resource_path(os.path.join("assets", "wood_bg.png"))
             pix = QPixmap(path) if os.path.exists(path) else None
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
@@ -1690,7 +1697,7 @@ class MultiApp(QMainWindow):
         name.setMinimumWidth(0)
         name.setStyleSheet(f"""
             color: #FFFFFF;
-            font-family: {TITLE_FONT_FAMILIES};
+            font-family: {title_font_family(label)};
             font-size: {sz(23 if wide else 17)}px;
             font-weight: 800;
             letter-spacing: 0.5px;
@@ -1781,7 +1788,7 @@ class MultiApp(QMainWindow):
             f"<span style='color:{GRADIENTS['accent'][1]};'>Memo</span>"
         )
         title.setStyleSheet(f"""
-            font-family: {TITLE_FONT_FAMILIES};
+            font-family: {TITLE_FONT_EN};
             font-size: {sz(52)}px;
             font-weight: 800;
             letter-spacing: 1px;
