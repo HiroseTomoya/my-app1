@@ -1849,6 +1849,7 @@ class MultiApp(QMainWindow):
             font-size: {sz(52)}px;
             font-weight: 800;
             letter-spacing: 1px;
+            padding-left: {sz(14)}px;
         """)
         txt.addWidget(title)
 
