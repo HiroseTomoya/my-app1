@@ -49,6 +49,9 @@ def resource_path(relative_path):
 # 英字用と日本語用を1つのfont-familyリストにまとめてしまうと、Arkipelago(英字の
 # 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
 # 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
+# 【お試し】True: タイマー以外の各画面(TO DO/メモ/カレンダー/ノート/セキュリティメモ)も手書き風フォントにする
+SCREEN_FONT_TRIAL = True
+
 TITLE_FONT_EN = "'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
 # 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
 # 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
@@ -434,7 +437,7 @@ class StyledButton(QPushButton):
             QPushButton {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {base_color});
                 color: white;
-                font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+                font-family: {TITLE_FONT_JA if SCREEN_FONT_TRIAL else "'Meiryo UI', 'Segoe UI', sans-serif"};
                 font-size: {font_size};
                 font-weight: 700;
                 border-radius: 13px;
@@ -1420,12 +1423,17 @@ class MultiApp(QMainWindow):
 
     def _new_screen(self, object_name="screenBg"):
         # 各画面のルートウィジェット。木目の壁紙を全画面共通で敷く
+        # 【お試し】全画面のフォントを手書き風(ふい字)優先にする。戻す時はSCREEN_FONT_TRIALをFalseに
+        font_css = f"* {{ font-family: {TITLE_FONT_JA}; }}" if SCREEN_FONT_TRIAL else ""
         pix = self._get_wood_pixmap()
         if pix:
-            return TiledBackgroundWidget(pix)
+            w = TiledBackgroundWidget(pix)
+            if font_css:
+                w.setStyleSheet(font_css)
+            return w
         w = QWidget()
         w.setObjectName(object_name)
-        w.setStyleSheet(f"QWidget#{object_name} {{ background-color: {self.colors['page']}; }}")
+        w.setStyleSheet(f"QWidget#{object_name} {{ background-color: {self.colors['page']}; }} {font_css}")
         return w
 
     def _panel(self, name, radius=16):
