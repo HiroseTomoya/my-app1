@@ -2127,7 +2127,7 @@ class MultiApp(QMainWindow):
 
         self.timer_display = QLabel("00:00")
         self.timer_display.setStyleSheet(f"""
-            font-family: 'Consolas', 'SF Mono', monospace;
+            font-family: {TITLE_FONT_EN};
             font-size: 92px;
             font-weight: 800;
             color: {self.colors['text_main']};
@@ -2155,7 +2155,7 @@ class MultiApp(QMainWindow):
             """)
         min_lbl = QLabel("分"); sec_lbl = QLabel("秒")
         for l in (min_lbl, sec_lbl):
-            l.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {self.colors['text_sub']}; border: none;")
+            l.setStyleSheet(f"font-family: {TITLE_FONT_JA}; font-size: 15px; font-weight: 700; color: {self.colors['text_sub']}; border: none;")
         in_layout.addStretch()
         in_layout.addWidget(self.e_min); in_layout.addWidget(min_lbl)
         in_layout.addSpacing(14)
