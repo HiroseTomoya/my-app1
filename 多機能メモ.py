@@ -49,6 +49,9 @@ def resource_path(relative_path):
 # 英字用と日本語用を1つのfont-familyリストにまとめてしまうと、Arkipelago(英字の
 # 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
 # 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
+# ホーム画面のメニューボタンの色(全ボタン共通)
+MENU_CARD_COLOR = "#7A5C44"
+
 # 【お試し】True: タイマー以外の各画面(TO DO/メモ/カレンダー/ノート/セキュリティメモ)も手書き風フォントにする
 SCREEN_FONT_TRIAL = True
 
@@ -1758,12 +1761,10 @@ class MultiApp(QMainWindow):
             return round(v * scale)
 
         light, dark = self._grad_pair(color)
-        # ボタン本体は派手になりすぎないよう、彩度を落として少し暗くした落ち着いた色にする
-        # (機能ごとの色の違いは残しつつ、木目の背景に馴染ませる)
-        _c = QColor(dark)
-        h, s, v, _a = _c.getHsv()
-        _c.setHsv(h, round(s * 0.52), round(v * 0.80))
-        face = _c.name()
+        # ボタンは機能ごとに色分けせず、全部同じ木目に馴染む落ち着いた色(ウォールナット調)に統一する。
+        # 機能の見分けはアイコンと名前で行う
+        face = MENU_CARD_COLOR
+        dark = face  # 台座の影の色にも使う
         face_hover = lighten_hex(face, 10)
         base_color = lighten_hex(face, -40)  # 同系色でさらに濃い「台座」の色
         radius = sz(46 if wide else 42)    # 写真のピル型に近づけて大きく丸める
