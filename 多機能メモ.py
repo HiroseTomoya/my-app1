@@ -1574,7 +1574,7 @@ class MultiApp(QMainWindow):
                 x = (scaled.width() - width) // 2
                 # 縦方向は中央ではなく上寄りから切り出す。下端のマスキングテープが
                 # 中途半端に切れて見えないよう、はみ出す分はなるべく上側から削る
-                y = round((scaled.height() - height) * 0.85)
+                y = round((scaled.height() - height) * 0.65)
                 pix = scaled.copy(x, y, width, height)
         cache[key] = pix
         return pix
@@ -1934,7 +1934,7 @@ class MultiApp(QMainWindow):
         paper.setObjectName("memoPaper")
         # 横幅は広めに、縦幅は抑えめに(cover-fitで切り出すので元画像の縦横比に縛られない)
         paper_width = csz(1070)
-        paper_height = csz(640)
+        paper_height = csz(720)
         notebook_pix = self._load_notebook_pixmap(paper_width, paper_height)
         stack = QStackedLayout(paper)
         stack.setStackingMode(QStackedLayout.StackAll)
