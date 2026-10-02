@@ -1992,7 +1992,7 @@ class MultiApp(QMainWindow):
         rule.setStyleSheet(f"background-color: {self.PAPER_RULE}; border: none;")
         txt.addWidget(rule)
 
-        txt.addSpacing(tsz(10))
+        txt.addSpacing(tsz(2))
         sub = QLabel("✎  あなたの毎日を、一冊に。")
         sub.setWordWrap(True)  # 紙の幅を超えそうな場合に横へはみ出さず折り返す
         sub.setStyleSheet(f"""
