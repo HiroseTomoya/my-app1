@@ -1917,7 +1917,7 @@ class MultiApp(QMainWindow):
 
         # 文字(日付・タイトル・サブタイトル)はカード自体より大きめの縮小率で描く。
         # カードを小さく保って1画面に収めつつ、文字だけは読みやすいサイズにするため
-        text_scale = scale * 0.85
+        text_scale = scale * 0.95
 
         def tsz(v):
             return round(v * text_scale)
