@@ -1918,7 +1918,7 @@ class MultiApp(QMainWindow):
         # マスキングテープが描かれているので、コードで描いていた分は不要になった
         paper = QWidget()
         paper.setObjectName("memoPaper")
-        paper_width = csz(820)
+        paper_width = csz(1070)  # ノート紙の横幅を広めに(縦横比は維持したまま幅だけ拡大)
         notebook_pix = self._load_notebook_pixmap(paper_width)
         stack = QStackedLayout(paper)
         stack.setStackingMode(QStackedLayout.StackAll)
