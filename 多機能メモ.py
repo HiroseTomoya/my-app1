@@ -1553,22 +1553,28 @@ class MultiApp(QMainWindow):
         cache[height] = pix
         return pix
 
-    def _load_notebook_pixmap(self, width):
-        # タイトルカードの背景イラスト(assets/notebook_paper.png)を指定の幅にあわせて縮小する
-        if width <= 0:
+    def _load_notebook_pixmap(self, width, height):
+        # タイトルカードの背景イラスト(assets/notebook_paper.png)を指定のサイズに
+        # 合わせる。元画像の縦横比のままだと横長にするほど縦も伸びてしまうため、
+        # cover-fitで拡大してから中央を指定サイズに切り出す(横長の比率にできる)
+        if width <= 0 or height <= 0:
             return None
         cache = getattr(self, "_notebook_pixmap_cache", None)
         if cache is None:
             cache = self._notebook_pixmap_cache = {}
-        if width in cache:
-            return cache[width]
+        key = (width, height)
+        if key in cache:
+            return cache[key]
         path = resource_path(os.path.join("assets", "notebook_paper.png"))
         pix = None
         if os.path.exists(path):
             loaded = QPixmap(path)
             if not loaded.isNull():
-                pix = loaded.scaledToWidth(width, Qt.SmoothTransformation)
-        cache[width] = pix
+                scaled = loaded.scaled(width, height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                x = (scaled.width() - width) // 2
+                y = (scaled.height() - height) // 2
+                pix = scaled.copy(x, y, width, height)
+        cache[key] = pix
         return pix
 
     def _make_header(self, icon, title, accent, back_slot=None, back_text="←  戻る", icon_file=None):
@@ -1903,7 +1909,7 @@ class MultiApp(QMainWindow):
 
         # 文字(日付・タイトル・サブタイトル)はカード自体より大きめの縮小率で描く。
         # カードを小さく保って1画面に収めつつ、文字だけは読みやすいサイズにするため
-        text_scale = scale * 0.75
+        text_scale = scale * 1.0
 
         def tsz(v):
             return round(v * text_scale)
@@ -1918,8 +1924,10 @@ class MultiApp(QMainWindow):
         # マスキングテープが描かれているので、コードで描いていた分は不要になった
         paper = QWidget()
         paper.setObjectName("memoPaper")
-        paper_width = csz(1070)  # ノート紙の横幅を広めに(縦横比は維持したまま幅だけ拡大)
-        notebook_pix = self._load_notebook_pixmap(paper_width)
+        # 横幅は広めに、縦幅は抑えめに(cover-fitで切り出すので元画像の縦横比に縛られない)
+        paper_width = csz(1070)
+        paper_height = csz(640)
+        notebook_pix = self._load_notebook_pixmap(paper_width, paper_height)
         stack = QStackedLayout(paper)
         stack.setStackingMode(QStackedLayout.StackAll)
         stack.setContentsMargins(0, 0, 0, 0)
