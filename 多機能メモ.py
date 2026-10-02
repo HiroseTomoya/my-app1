@@ -1956,7 +1956,7 @@ class MultiApp(QMainWindow):
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
         # 上の余白はリング穴にかぶらないよう広めに取る(イラスト上部のリング穴を避ける)
-        bh.setContentsMargins(csz(115), csz(150), csz(130), csz(70))
+        bh.setContentsMargins(csz(165), csz(150), csz(140), csz(70))
         bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
