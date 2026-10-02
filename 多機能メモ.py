@@ -1758,7 +1758,12 @@ class MultiApp(QMainWindow):
             return round(v * scale)
 
         light, dark = self._grad_pair(color)
-        face = dark                        # ボタン本体＝彩度の高い色そのもの
+        # ボタン本体は派手になりすぎないよう、彩度を落として少し暗くした落ち着いた色にする
+        # (機能ごとの色の違いは残しつつ、木目の背景に馴染ませる)
+        _c = QColor(dark)
+        h, s, v, _a = _c.getHsv()
+        _c.setHsv(h, round(s * 0.52), round(v * 0.80))
+        face = _c.name()
         face_hover = lighten_hex(face, 10)
         base_color = lighten_hex(face, -40)  # 同系色でさらに濃い「台座」の色
         radius = sz(46 if wide else 42)    # 写真のピル型に近づけて大きく丸める
