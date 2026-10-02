@@ -1572,7 +1572,9 @@ class MultiApp(QMainWindow):
             if not loaded.isNull():
                 scaled = loaded.scaled(width, height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
                 x = (scaled.width() - width) // 2
-                y = (scaled.height() - height) // 2
+                # 縦方向は中央ではなく上寄りから切り出す。下端のマスキングテープが
+                # 中途半端に切れて見えないよう、はみ出す分はなるべく上側から削る
+                y = round((scaled.height() - height) * 0.85)
                 pix = scaled.copy(x, y, width, height)
         cache[key] = pix
         return pix
@@ -1962,7 +1964,7 @@ class MultiApp(QMainWindow):
 
         # 日付スタンプ
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
-        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {tsz(14)}px; font-weight: 700; letter-spacing: 2px;")
+        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-family: {TITLE_FONT_EN}; font-size: {tsz(14)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
         txt.addSpacing(tsz(3))
 
@@ -2007,7 +2009,7 @@ class MultiApp(QMainWindow):
         pencil = QLabel()
         pencil.setStyleSheet("background: transparent; border: none;")
         pencil.setAlignment(Qt.AlignTop | Qt.AlignRight)
-        pencil_pix = self._load_pencil_pixmap(csz(90))
+        pencil_pix = self._load_pencil_pixmap(csz(130))
         if pencil_pix is not None:
             pencil.setPixmap(pencil_pix)
         else:
