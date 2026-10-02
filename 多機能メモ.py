@@ -1964,7 +1964,7 @@ class MultiApp(QMainWindow):
 
         # 日付スタンプ
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
-        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-family: {TITLE_FONT_EN}; font-size: {tsz(14)}px; font-weight: 700; letter-spacing: 2px;")
+        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-family: {TITLE_FONT_EN}; font-size: {tsz(19)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
         txt.addSpacing(tsz(3))
 
@@ -1998,7 +1998,7 @@ class MultiApp(QMainWindow):
         sub.setStyleSheet(f"""
             color: {self.colors['text_sub']};
             font-family: {TITLE_FONT_JA};
-            font-size: {tsz(17)}px;
+            font-size: {tsz(21)}px;
             letter-spacing: 1px;
         """)
         txt.addWidget(sub)
