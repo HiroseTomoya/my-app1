@@ -50,7 +50,7 @@ def resource_path(relative_path):
 # 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
 # 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
 # ホーム画面のメニューボタンの色(全ボタン共通)
-MENU_CARD_COLOR = "#7A5C44"
+MENU_CARD_COLOR = "#A67C55"
 
 # 【お試し】True: タイマー以外の各画面(TO DO/メモ/カレンダー/ノート/セキュリティメモ)も手書き風フォントにする
 SCREEN_FONT_TRIAL = True
