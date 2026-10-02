@@ -1815,7 +1815,13 @@ class MultiApp(QMainWindow):
         sub = QLabel(desc)
         sub.setWordWrap(True)
         sub.setMinimumWidth(0)
-        sub.setStyleSheet(f"color: rgba(255, 255, 255, 0.85); font-size: {sz(13)}px; border: none; background: transparent;")
+        sub.setStyleSheet(f"""
+            color: rgba(255, 255, 255, 0.85);
+            font-family: {title_font_family(desc)};
+            font-size: {sz(13)}px;
+            border: none;
+            background: transparent;
+        """)
 
         # 木目の濃淡で文字が読みにくくならないよう、ラベルに軽い落ち影を入れてコントラストを補う
         self._add_shadow(name, blur=round(6 * scale), dy=1, alpha=150, color="#000000")
@@ -1909,7 +1915,7 @@ class MultiApp(QMainWindow):
 
         # 文字(日付・タイトル・サブタイトル)はカード自体より大きめの縮小率で描く。
         # カードを小さく保って1画面に収めつつ、文字だけは読みやすいサイズにするため
-        text_scale = scale * 1.0
+        text_scale = scale * 0.85
 
         def tsz(v):
             return round(v * text_scale)
@@ -1948,7 +1954,7 @@ class MultiApp(QMainWindow):
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
         # 上の余白はリング穴にかぶらないよう広めに取る(イラスト上部のリング穴を避ける)
-        bh.setContentsMargins(csz(115), csz(150), csz(60), csz(70))
+        bh.setContentsMargins(csz(115), csz(150), csz(130), csz(70))
         bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
@@ -1987,7 +1993,12 @@ class MultiApp(QMainWindow):
         txt.addSpacing(tsz(10))
         sub = QLabel("✎  あなたの毎日を、一冊に。")
         sub.setWordWrap(True)  # 紙の幅を超えそうな場合に横へはみ出さず折り返す
-        sub.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: {tsz(17)}px; letter-spacing: 1px;")
+        sub.setStyleSheet(f"""
+            color: {self.colors['text_sub']};
+            font-family: {TITLE_FONT_JA};
+            font-size: {tsz(17)}px;
+            letter-spacing: 1px;
+        """)
         txt.addWidget(sub)
 
         bh.addLayout(txt, stretch=1)
