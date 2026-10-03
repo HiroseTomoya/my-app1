@@ -1603,6 +1603,14 @@ class MultiApp(QMainWindow):
         cache[key] = pix
         return pix
 
+    def _load_writing_hand_pixmap(self):
+        # タイトルを書く手のイラスト(assets/writing_hand.png)。無ければNone
+        if not hasattr(self, "_writing_hand_cache"):
+            path = resource_path(os.path.join("assets", "writing_hand.png"))
+            pix = QPixmap(path) if os.path.exists(path) else None
+            self._writing_hand_cache = pix if (pix and not pix.isNull()) else None
+        return self._writing_hand_cache
+
     def _load_pencil_pixmap(self, height):
         # タイトルカード右上の鉛筆イラスト(assets/pencil.png)を指定の高さにあわせて縮小する
         if height <= 0:
@@ -2055,7 +2063,7 @@ class MultiApp(QMainWindow):
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
         # 上の余白はリング穴にかぶらないよう広めに取る(イラスト上部のリング穴を避ける)
-        bh.setContentsMargins(csz(150), csz(200), csz(150), csz(80))
+        bh.setContentsMargins(csz(120), csz(200), csz(150), csz(80))
         bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
@@ -2138,17 +2146,50 @@ class MultiApp(QMainWindow):
 
         bh.addLayout(txt, stretch=1)
 
-        # 右側に鉛筆のイラスト
-        pencil = QLabel()
-        pencil.setStyleSheet("background: transparent; border: none;")
-        pencil.setAlignment(Qt.AlignTop | Qt.AlignRight)
-        pencil_pix = self._load_pencil_pixmap(csz(130))
-        if pencil_pix is not None:
-            pencil.setPixmap(pencil_pix)
+        # タイトルを書いている手のイラスト(assets/writing_hand.png)。
+        # ペン先をタイトル末尾に合わせ、手首は紙の右端で切れるよう紙の形で切り抜いて重ねる
+        hand_src = self._load_writing_hand_pixmap()
+        if hand_src is not None:
+            hand_label = QLabel(paper)
+            hand_label.setStyleSheet("background: transparent; border: none;")
+            hand_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            prev_on_layout = paper.on_layout
+
+            def place_hand():
+                if prev_on_layout:
+                    prev_on_layout()
+                if notebook_pix is None or paper.width() <= 0:
+                    return
+                tl = title.mapTo(paper, QPoint(0, 0))
+                hand_h = max(40, round(title_pix.height() * 1.45))
+                hand = hand_src.scaledToHeight(hand_h, Qt.SmoothTransformation)
+                tip_y = tl.y() + title_pix.height() * 0.78   # 文字の下側(書いている線)にペン先
+                hx = tl.x() + title_pix.width() + 4
+                hy = round(tip_y - hand_h * 0.46)
+                canvas = QPixmap(paper.size())
+                canvas.fill(Qt.transparent)
+                p = QPainter(canvas)
+                p.drawPixmap(hx, hy, hand)
+                p.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+                p.drawPixmap(max(0, (paper.width() - notebook_pix.width()) // 2), 0, notebook_pix)
+                p.end()
+                hand_label.setPixmap(canvas)
+                hand_label.setGeometry(0, 0, paper.width(), paper.height())
+                hand_label.raise_()
+                hand_label.show()
+
+            paper.on_layout = place_hand
+            # 以前の鉛筆が占めていた幅を空けて、カード全体の幅が変わらないようにする
+            _pw = self._load_pencil_pixmap(csz(130))
+            bh.addSpacing((_pw.width() if _pw is not None else csz(94)) + csz(75))
         else:
-            pencil.setText("✏️")
-            pencil.setStyleSheet(f"font-size: {csz(44)}px; background: transparent; border: none;")
-        bh.addWidget(pencil)
+            pencil = QLabel()
+            pencil.setStyleSheet("background: transparent; border: none;")
+            pencil.setAlignment(Qt.AlignTop | Qt.AlignRight)
+            pencil_pix = self._load_pencil_pixmap(csz(130))
+            if pencil_pix is not None:
+                pencil.setPixmap(pencil_pix)
+            bh.addWidget(pencil)
 
         stack.addWidget(body)
         stack.setCurrentWidget(body)  # StackAllでも「カレント」を最前面にする必要がある
