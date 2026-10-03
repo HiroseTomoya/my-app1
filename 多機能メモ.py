@@ -2163,9 +2163,9 @@ class MultiApp(QMainWindow):
                 tl = title.mapTo(paper, QPoint(0, 0))
                 hand_h = max(36, round(title_pix.height() * 0.95))
                 hand = hand_src.scaledToHeight(hand_h, Qt.SmoothTransformation)
-                tip_y = tl.y() + title_pix.height() * 0.45   # 文字の中ほどよりやや上にペン先
+                tip_y = tl.y() + title_pix.height() * 0.62   # 文字の中ほどよりやや下にペン先(手そのものは上に来る)
                 hx = tl.x() + title_pix.width() + 4
-                hy = round(tip_y - hand_h * 0.46)
+                hy = round(tip_y - hand_h * 0.83)            # 画像内のペン先は下端近く(約83%の高さ)
                 canvas = QPixmap(paper.size())
                 canvas.fill(Qt.transparent)
                 p = QPainter(canvas)
