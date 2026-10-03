@@ -1983,24 +1983,30 @@ class MultiApp(QMainWindow):
         font.setLetterSpacing(QFont.AbsoluteSpacing, max(0.0, 1.0 * scale))
 
         fm = QFontMetrics(font)
-        parts = [("Ever", TITLE_TEXT_BROWN), ("Grove", TITLE_TEXT_BROWN)]
-        natural_w = sum(fm.horizontalAdvance(t) for t, _ in parts)
+        # 先頭の「E」と「G」は頭文字なので、1.3倍に大きくして大文字だと分かるようにする
+        CAP = 1.3
+        pieces = [("E", CAP), ("ver", 1.0), ("G", CAP), ("rove", 1.0)]
+        cap_font = QFont(font)
+        cap_font.setPointSize(max(1, round(point_size * CAP)))
+        cap_fm = QFontMetrics(cap_font)
+        parts = [(t, TITLE_TEXT_BROWN, cap_font if s != 1.0 else font) for t, s in pieces]
+        natural_w = sum((cap_fm if f is cap_font else fm).horizontalAdvance(t) for t, _, f in parts)
         margin = max(24, point_size)  # スワッシュ用の逃げ代。文字サイズに応じて多めに確保する
         canvas_w = natural_w + margin * 2
-        canvas_h = fm.height() + margin * 2
+        canvas_h = cap_fm.height() + margin * 2
 
         img = QImage(canvas_w, canvas_h, QImage.Format_ARGB32_Premultiplied)
         img.fill(Qt.transparent)
         painter = QPainter(img)
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setRenderHint(QPainter.TextAntialiasing, True)
-        painter.setFont(font)
         x = margin
-        baseline = margin + fm.ascent()
-        for text, color in parts:
+        baseline = margin + cap_fm.ascent()   # 大きい文字に合わせた共通のベースライン
+        for text, color, f in parts:
+            painter.setFont(f)
             painter.setPen(QColor(color))
             painter.drawText(x, baseline, text)
-            x += fm.horizontalAdvance(text)
+            x += (cap_fm if f is cap_font else fm).horizontalAdvance(text)
         painter.end()
 
         # 実際にインクが乗っている範囲(アルファ>0)だけを切り出す
@@ -2141,6 +2147,7 @@ class MultiApp(QMainWindow):
             font-family: {TITLE_FONT_JA};
             font-size: {tsz(21)}px;
             letter-spacing: 1px;
+            padding-left: {tsz(46)}px;
         """)
         txt.addWidget(sub)
 
@@ -2181,7 +2188,8 @@ class MultiApp(QMainWindow):
             paper.on_layout = place_hand
             # 以前の鉛筆が占めていた幅を空けて、カード全体の幅が変わらないようにする
             _pw = self._load_pencil_pixmap(csz(130))
-            bh.addSpacing((_pw.width() if _pw is not None else csz(94)) + csz(75))
+            # (キャッチコピーを右に寄せた余白tsz(46)の分だけ、右側の空きを減らして全体の幅を保つ)
+            bh.addSpacing(max(0, (_pw.width() if _pw is not None else csz(94)) + csz(75) - tsz(46)))
         else:
             pencil = QLabel()
             pencil.setStyleSheet("background: transparent; border: none;")
