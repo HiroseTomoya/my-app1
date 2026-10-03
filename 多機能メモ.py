@@ -354,6 +354,38 @@ class WoodButton(QPushButton):
         super().paintEvent(event)
 
 
+_BUTTON_WOOD_PIX = None
+
+
+def get_button_wood_pixmap():
+    # 全ボタン共通の木の板画像(assets/button_wood.jpg)。板と板の境目が中央に来るよう切り出し済み
+    global _BUTTON_WOOD_PIX
+    if _BUTTON_WOOD_PIX is None:
+        path = resource_path(os.path.join("assets", "button_wood.jpg"))
+        pix = QPixmap(path) if os.path.exists(path) else QPixmap()
+        _BUTTON_WOOD_PIX = pix
+    return _BUTTON_WOOD_PIX
+
+
+# --- アプリ内の共通ボタン: 板の境目が中央に来る木目を貼り、文字を白で重ねる ---
+class WoodSkinButton(QPushButton):
+    def __init__(self, text="", radius=10, parent=None):
+        super().__init__(text, parent)
+        self._skin_radius = radius
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        pressed_or_hover = self.underMouse() or self.isDown()
+        # 文字が読めるよう黒を重ねて落ち着かせ、ホバー時は少し明るくする
+        _paint_wood_tint(
+            painter, self.rect(), get_button_wood_pixmap(), "#000000",
+            45 if pressed_or_hover else 105, self._skin_radius, dpr=self.devicePixelRatioF(),
+        )
+        painter.end()
+        super().paintEvent(event)
+
+
 # --- ボタンなどを幅に応じて自動的に折り返すレイアウト（小さいウィンドウでツールバーの
 #     項目が見切れないようにするため。QtのFlowLayoutサンプルの定番実装） ---
 class FlowLayout(QLayout):
@@ -423,22 +455,19 @@ class FlowLayout(QLayout):
 
 
 # --- カスタムボタンスタイル ---
-class StyledButton(QPushButton):
+class StyledButton(WoodSkinButton):
     def __init__(self, text, base_color, parent=None, width=None, compact=False):
-        super().__init__(text, parent)
+        super().__init__(text, radius=13, parent=parent)
         self.base_color = base_color
-        self.setCursor(QCursor(Qt.PointingHandCursor))
         if width:
             self.setFixedWidth(width)
 
-        top = self.lighten(base_color, 26)
-        htop = self.lighten(base_color, 48)
-        hbot = self.lighten(base_color, 14)
         pad = "11px 22px" if compact else "14px 30px"
         font_size = "14px" if compact else "16px"
+        # 背景は木目をpaintEventで描くので透明。色分けはせず全ボタン同じ木目にする
         self.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {base_color});
+                background: transparent;
                 color: white;
                 font-family: {TITLE_FONT_JA if SCREEN_FONT_TRIAL else "'Meiryo UI', 'Segoe UI', sans-serif"};
                 font-size: {font_size};
@@ -447,13 +476,6 @@ class StyledButton(QPushButton):
                 padding: {pad};
                 border: none;
                 min-height: 38px;
-            }}
-            QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {htop}, stop:1 {hbot});
-                color: white;
-            }}
-            QPushButton:pressed {{
-                background: {base_color};
             }}
         """)
 
@@ -1505,23 +1527,18 @@ class MultiApp(QMainWindow):
     def _ghost_btn(self, text, color=None, compact=True):
         # 副次的な操作用の控えめなボタン（枠線＋ホバーで軽く着色）
         c = color or self.colors['text_sub']
-        b = QPushButton(text)
-        b.setCursor(QCursor(Qt.PointingHandCursor))
+        b = WoodSkinButton(text, radius=10)
         pad = "8px 14px" if compact else "11px 20px"
         fs = "13px" if compact else "14px"
         b.setStyleSheet(f"""
             QPushButton {{
-                color: {c};
+                color: white;
                 background: transparent;
-                border: 1px solid {self.colors['border']};
+                border: none;
                 border-radius: 10px;
                 padding: {pad};
                 font-size: {fs};
                 font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background: {self._rgba(c, 0.10)};
-                border-color: {c};
             }}
         """)
         return b
@@ -1604,22 +1621,17 @@ class MultiApp(QMainWindow):
         h.setContentsMargins(2, 2, 2, 2)
         h.setSpacing(12)
 
-        back = QPushButton(back_text)
-        back.setCursor(QCursor(Qt.PointingHandCursor))
-        back.setStyleSheet(f"""
-            QPushButton {{
-                color: {self.colors['text_sub']};
+        back = WoodSkinButton(back_text, radius=10)
+        back.setStyleSheet("""
+            QPushButton {
+                color: white;
                 background: transparent;
-                border: 1px solid {self.colors['border']};
+                border: none;
                 border-radius: 10px;
                 padding: 9px 16px;
                 font-size: 13px;
                 font-weight: 700;
-            }}
-            QPushButton:hover {{
-                background: {self.colors['bg_surface']};
-                color: {self.colors['text_main']};
-            }}
+            }
         """)
         back.clicked.connect(back_slot or self.back_to_selector)
         h.addWidget(back)
@@ -2347,24 +2359,19 @@ class MultiApp(QMainWindow):
         reorder_btn.setToolTip("プルダウンを開いて「☰」をドラッグすると並び替えられます")
         folder_row_layout.addWidget(reorder_btn)
 
-        add_btn = QPushButton("＋")
+        add_btn = WoodSkinButton("＋", radius=13)
         add_btn.setFixedSize(44, 44)
-        add_btn.setCursor(QCursor(Qt.PointingHandCursor))
         add_btn.setToolTip("フォルダを追加")
-        add_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {self._grad(self.colors['success'])};
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
                 color: #FFFFFF;
                 font-size: 19px;
                 font-weight: 800;
                 border: none;
                 border-radius: 13px;
-            }}
-            QPushButton:hover {{
-                background: {grad_css((lighten_hex(GRADIENTS['success'][0], 20), lighten_hex(GRADIENTS['success'][1], 10)))};
-            }}
+            }
         """)
-        self._add_shadow(add_btn, blur=12, dy=3, alpha=80, color=self.colors["success"])
         add_btn.clicked.connect(self.add_folder)
         folder_row_layout.addWidget(add_btn)
         layout.addWidget(folder_row)
@@ -2755,24 +2762,19 @@ class MultiApp(QMainWindow):
         self.note_subject_combo.currentIndexChanged.connect(self.on_note_subject_combo_changed)
         subject_row_layout.addWidget(self.note_subject_combo, stretch=1)
 
-        add_subject_btn = QPushButton("＋")
+        add_subject_btn = WoodSkinButton("＋", radius=13)
         add_subject_btn.setFixedSize(44, 44)
-        add_subject_btn.setCursor(QCursor(Qt.PointingHandCursor))
         add_subject_btn.setToolTip("科目を追加")
-        add_subject_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {self._grad(self.colors['info'])};
+        add_subject_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
                 color: #FFFFFF;
                 font-size: 19px;
                 font-weight: 800;
                 border: none;
                 border-radius: 13px;
-            }}
-            QPushButton:hover {{
-                background: {grad_css((lighten_hex(GRADIENTS['info'][0], 20), lighten_hex(GRADIENTS['info'][1], 10)))};
-            }}
+            }
         """)
-        self._add_shadow(add_subject_btn, blur=12, dy=3, alpha=80, color=self.colors["info"])
         add_subject_btn.clicked.connect(self.add_note_subject)
         subject_row_layout.addWidget(add_subject_btn)
         layout.addWidget(subject_row)
@@ -3459,26 +3461,20 @@ class MultiApp(QMainWindow):
 
     def _icon_btn(self, glyph, hover_color, slot, label=None):
         # 明確にボタンと分かるよう、常時うっすら背景＋枠をつける
-        b = QPushButton(f"{glyph}  {label}" if label else glyph)
-        b.setCursor(QCursor(Qt.PointingHandCursor))
+        b = WoodSkinButton(f"{glyph}  {label}" if label else glyph, radius=9)
         if label:
             b.setMinimumHeight(32)
         else:
             b.setFixedSize(34, 32)
         b.setStyleSheet(f"""
             QPushButton {{
-                color: {self.colors['text_sub']};
-                background: {self.colors['bg_surface']};
-                border: 1px solid {self.colors['border']};
+                color: white;
+                background: transparent;
+                border: none;
                 font-size: 13px;
                 font-weight: 600;
                 border-radius: 9px;
                 padding: {'5px 12px' if label else '0px'};
-            }}
-            QPushButton:hover {{
-                background: {self._rgba(hover_color, 0.14)};
-                border-color: {hover_color};
-                color: {hover_color};
             }}
         """)
         b.clicked.connect(slot)
