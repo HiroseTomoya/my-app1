@@ -377,10 +377,11 @@ class WoodSkinButton(QPushButton):
     def paintEvent(self, event):
         painter = QPainter(self)
         pressed_or_hover = self.underMouse() or self.isDown()
-        # 文字が読めるよう黒を重ねて落ち着かせ、ホバー時は少し明るくする
+        # 木目を明るめに見せるため黒の重ね方は控えめにし、ホバー時は白を薄く重ねて明るくする
+        tint, alpha = ("#FFFFFF", 38) if pressed_or_hover else ("#000000", 30)
         _paint_wood_tint(
-            painter, self.rect(), get_button_wood_pixmap(), "#000000",
-            45 if pressed_or_hover else 105, self._skin_radius, dpr=self.devicePixelRatioF(),
+            painter, self.rect(), get_button_wood_pixmap(), tint,
+            alpha, self._skin_radius, dpr=self.devicePixelRatioF(),
         )
         painter.end()
         super().paintEvent(event)
