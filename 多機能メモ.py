@@ -1983,7 +1983,7 @@ class MultiApp(QMainWindow):
         font.setLetterSpacing(QFont.AbsoluteSpacing, max(0.0, 1.0 * scale))
 
         fm = QFontMetrics(font)
-        parts = [("Multi", TITLE_TEXT_BROWN), ("Memo", TITLE_TEXT_BROWN)]
+        parts = [("Ever", TITLE_TEXT_BROWN), ("Grove", TITLE_TEXT_BROWN)]
         natural_w = sum(fm.horizontalAdvance(t) for t, _ in parts)
         margin = max(24, point_size)  # スワッシュ用の逃げ代。文字サイズに応じて多めに確保する
         canvas_w = natural_w + margin * 2
@@ -2134,8 +2134,8 @@ class MultiApp(QMainWindow):
         # 枝の下の線は表示しない
 
         txt.addSpacing(tsz(2))
-        sub = QLabel("✎  あなたの毎日を、一冊に。")
-        sub.setWordWrap(True)  # 紙の幅を超えそうな場合に横へはみ出さず折り返す
+        sub = QLabel("ひとつひとつがあなたの森になる")
+        sub.setWordWrap(False)  # キャッチコピーは1行で表示する(紙の幅に収まる長さ)
         sub.setStyleSheet(f"""
             color: {TITLE_TEXT_BROWN};
             font-family: {TITLE_FONT_JA};
