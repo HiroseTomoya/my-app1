@@ -1424,6 +1424,14 @@ class MultiApp(QMainWindow):
             self._wood_pixmap_cache = pix if (pix and not pix.isNull()) else None
         return self._wood_pixmap_cache
 
+    def _get_button_wood_pixmap(self):
+        # ホーム画面のメニューボタン用の木の板の画像(assets/button_wood.jpg)
+        if not hasattr(self, "_button_wood_cache"):
+            path = resource_path(os.path.join("assets", "button_wood.jpg"))
+            pix = QPixmap(path) if os.path.exists(path) else None
+            self._button_wood_cache = pix if (pix and not pix.isNull()) else None
+        return self._button_wood_cache
+
     def _new_screen(self, object_name="screenBg"):
         # 各画面のルートウィジェット。木目の壁紙を全画面共通で敷く
         # 【お試し】全画面のフォントを手書き風(ふい字)優先にする。戻す時はSCREEN_FONT_TRIALをFalseに
@@ -1782,8 +1790,13 @@ class MultiApp(QMainWindow):
 
         # ボタン本体は単色ではなく、機能ごとの色で着色した木目テクスチャにする
         # (QSSのborder-imageはスケーリング品質が不安定だったため、直接描画するWoodButtonを使う)
-        wood = self._get_wood_pixmap()
-        card = WoodButton(wood, face, 220, face_hover, radius)
+        # ボタン専用の板の画像(assets/button_wood.jpg)をそのまま見せる。
+        # 色は載せず、ホバー時だけ白を薄く重ねて明るくする(無い場合は従来の着色木目)
+        button_wood = self._get_button_wood_pixmap()
+        if button_wood is not None:
+            card = WoodButton(button_wood, "#000000", 28, "#FFFFFF", radius)
+        else:
+            card = WoodButton(self._get_wood_pixmap(), face, 220, face_hover, radius)
         card.setObjectName("menuCard")
         card.setCursor(QCursor(Qt.PointingHandCursor))
         card.clicked.connect(slot)
