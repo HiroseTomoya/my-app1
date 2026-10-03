@@ -1700,18 +1700,20 @@ class MultiApp(QMainWindow):
         chip = QLabel()
         chip.setFixedSize(40, 40)
         chip.setAlignment(Qt.AlignCenter)
-        chip.setStyleSheet(f"""
-            background: {self._grad(accent)};
-            font-size: 19px;
-            border: none;
-            border-radius: 13px;
-        """)
-        pix = self._load_feature_icon(icon_file, 26)
+        pix = self._load_feature_icon(icon_file, 34)
         if pix is not None:
+            # 線画アイコン(濃い茶色の線)は暗い木目の上だと見えないので、白木色の下地に載せる
+            chip.setStyleSheet("background: rgba(250, 245, 236, 0.95); border: none; border-radius: 13px;")
             chip.setPixmap(pix)
         else:
+            chip.setStyleSheet(f"""
+                background: {self._grad(accent)};
+                font-size: 19px;
+                border: none;
+                border-radius: 13px;
+            """)
             chip.setText(icon)
-        self._add_shadow(chip, blur=16, dy=4, alpha=90, color=accent)
+            self._add_shadow(chip, blur=16, dy=4, alpha=90, color=accent)
         h.addWidget(chip)
 
         ttl = QLabel(title)
@@ -1888,13 +1890,13 @@ class MultiApp(QMainWindow):
         chip = QLabel()
         chip.setFixedSize(chip_size, chip_size)
         chip.setAlignment(Qt.AlignCenter)
+        # 線画アイコンは背景の丸なしで、白木のボタンに直接なじませる
         chip.setStyleSheet(f"""
-            background: rgba(255, 255, 255, 0.22);
+            background: transparent;
             font-size: {sz(24 if wide else 21)}px;
             border: none;
-            border-radius: {chip_size // 2}px;
         """)
-        pix = self._load_feature_icon(icon_file, round(chip_size * 0.66))
+        pix = self._load_feature_icon(icon_file, chip_size)
         if pix is not None:
             chip.setPixmap(pix)
         else:
