@@ -1602,7 +1602,10 @@ class MultiApp(QMainWindow):
             cache = self._wood_bar_cache = {}
         if width in cache:
             return cache[width]
-        path = resource_path(os.path.join("assets", "wood_bar.png"))
+        # 枝の画像(title_branch.png)を優先し、無ければ木の棒(wood_bar.png)
+        path = resource_path(os.path.join("assets", "title_branch.png"))
+        if not os.path.exists(path):
+            path = resource_path(os.path.join("assets", "wood_bar.png"))
         pix = None
         if os.path.exists(path):
             loaded = QPixmap(path)
