@@ -1994,10 +1994,7 @@ class MultiApp(QMainWindow):
         if notebook_pix is not None:
             bg_label.setPixmap(notebook_pix)
             paper.setFixedHeight(notebook_pix.height())
-        # 周り(木目の背景)に少し馴染むよう、イラストをわずかに透かす(文字は別レイヤーなので影響しない)
-        bg_opacity = QGraphicsOpacityEffect(bg_label)
-        bg_opacity.setOpacity(0.94)
-        bg_label.setGraphicsEffect(bg_opacity)
+        # 紙は透かさず、そのままの濃さで表示する
         stack.addWidget(bg_label)
 
         body = QWidget()
