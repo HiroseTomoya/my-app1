@@ -65,7 +65,16 @@ TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino
 
 
 def title_font_family(text):
-    return TITLE_FONT_EN if text.isascii() else TITLE_FONT_JA
+    # タイトルカード(MultiMemo・日付)以外は、英数字も含めて全部ふい字にする
+    return TITLE_FONT_JA
+
+
+def fui_font(point_size):
+    # QFontで直接フォントを指定する箇所(メモ本文・PDF出力など)用のふい字優先フォント
+    f = QFont()
+    f.setFamilies(["HuiFontP", "ふい字", "Meiryo UI", "Yu Gothic UI"])
+    f.setPointSize(point_size)
+    return f
 
 
 # --- タイマー音: 周波数パターンからWAVデータを合成 ---
@@ -524,7 +533,7 @@ def export_note_to_pdf(parent, title, text):
 
     html_body = esc(text).replace("\n", "<br>")
     doc = QTextDocument()
-    doc.setDefaultFont(QFont("Meiryo UI", 11))
+    doc.setDefaultFont(fui_font(11))
     doc.setHtml(
         f"<h2 style='margin-bottom:10px;'>{esc(title)}</h2>"
         f"<div style='font-size:11pt; line-height:1.7;'>{html_body}</div>"
@@ -613,7 +622,7 @@ def render_function_graph(expr, x_min, x_max, width=520, height=340):
     x_step = nice_step(x_max - x_min)
     y_step = nice_step(y_max - y_min)
 
-    font = QFont("Meiryo UI", 8)
+    font = fui_font(8)
     painter.setFont(font)
     fm = QFontMetrics(font)
 
@@ -937,7 +946,7 @@ class StyledInputDialog(QDialog):
             background: transparent;
             border: none;
             color: {COLORS['text_main']};
-            font-family: 'Meiryo UI', 'Segoe UI', sans-serif;
+            font-family: 'HuiFontP', 'ふい字', 'Meiryo UI', 'Segoe UI', sans-serif;
             font-size: 15px;
             selection-background-color: #BFDBFE;
         """
@@ -1351,7 +1360,7 @@ class MultiApp(QMainWindow):
         self.colors = dict(COLORS)
         self.setStyleSheet(f"""
             * {{
-                font-family: 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
+                font-family: 'HuiFontP', 'ふい字', 'Meiryo UI', 'Segoe UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif;
                 font-size: 15px;
             }}
             QMainWindow {{
@@ -2253,7 +2262,7 @@ class MultiApp(QMainWindow):
 
         self.timer_display = QLabel("00:00")
         self.timer_display.setStyleSheet(f"""
-            font-family: {TITLE_FONT_EN};
+            font-family: {TITLE_FONT_JA};
             font-size: 92px;
             font-weight: 800;
             color: {self.colors['text_main']};
@@ -2271,7 +2280,7 @@ class MultiApp(QMainWindow):
             entry.setFixedSize(84, 54)
             entry.setAlignment(Qt.AlignCenter)
             entry.setStyleSheet(f"""
-                font-family: 'Consolas', monospace;
+                font-family: {TITLE_FONT_JA};
                 font-size: 24px;
                 font-weight: 700;
                 border: 2px solid {self.colors['border']};
@@ -2476,7 +2485,7 @@ class MultiApp(QMainWindow):
         # テキストエリア（ノート風パネルに載せる = メモ帳らしく）
         paper, paper_content = self._notebook_panel("memoPage")
         self.memo_text_widget = MemoTextEdit()
-        self.memo_text_widget.setFont(QFont("Meiryo UI", 15))
+        self.memo_text_widget.setFont(fui_font(15))
         self.memo_text_widget.setPlaceholderText("ここにメモを入力...（画像はCtrl+Vで添付できます）")
         self.memo_text_widget.setFrameShape(QFrame.NoFrame)
         self.memo_text_widget.setStyleSheet(f"""
@@ -2945,7 +2954,7 @@ class MultiApp(QMainWindow):
 
         paper, paper_content = self._notebook_panel("notePage")
         self.note_content_widget = NoteTextEdit()
-        self.note_content_widget.setFont(QFont("Meiryo UI", 15))
+        self.note_content_widget.setFont(fui_font(15))
         self.note_content_widget.setPlaceholderText("この回の講義内容やメモを入力...")
         self.note_content_widget.setToolTip("挿入したスケッチ／グラフはダブルクリックで削除できます")
         self.note_content_widget.setFrameShape(QFrame.NoFrame)
@@ -3446,7 +3455,7 @@ class MultiApp(QMainWindow):
             lbl_title.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {self.colors['text_main']}; border: none;")
             p_disp = item["pass"] if item.get("show") else "••••••••••"
             lbl_pass = QLabel(p_disp)
-            lbl_pass.setStyleSheet(f"font-family: 'Consolas', monospace; color: {self.colors['text_sub']}; font-size: 13px; border: none;")
+            lbl_pass.setStyleSheet(f"font-family: {TITLE_FONT_JA}; color: {self.colors['text_sub']}; font-size: 13px; border: none;")
             text_box.addWidget(lbl_title)
             text_box.addWidget(lbl_pass)
             row_layout.addLayout(text_box, stretch=1)
