@@ -1593,6 +1593,24 @@ class MultiApp(QMainWindow):
         cache[height] = pix
         return pix
 
+    def _load_wood_bar_pixmap(self, width):
+        # タイトル下の木の棒(assets/wood_bar.png)を指定の幅に合わせて縮小する(縦横比は維持)
+        if width <= 0:
+            return None
+        cache = getattr(self, "_wood_bar_cache", None)
+        if cache is None:
+            cache = self._wood_bar_cache = {}
+        if width in cache:
+            return cache[width]
+        path = resource_path(os.path.join("assets", "wood_bar.png"))
+        pix = None
+        if os.path.exists(path):
+            loaded = QPixmap(path)
+            if not loaded.isNull():
+                pix = loaded.scaledToWidth(width, Qt.SmoothTransformation)
+        cache[width] = pix
+        return pix
+
     def _load_notebook_pixmap(self, width, height):
         # タイトルカードの背景イラスト(assets/notebook_paper.png)を指定のサイズに
         # 合わせる。元画像の縦横比のままだと横長にするほど縦も伸びてしまうため、
@@ -2028,10 +2046,18 @@ class MultiApp(QMainWindow):
         # タイトル文字の実際の幅に合わせる
         line_width = max(1, title_pix.width())
         txt.addSpacing(tsz(6))
-        hl = QFrame()
-        hl.setFixedHeight(tsz(9))
-        hl.setFixedWidth(line_width)
-        hl.setStyleSheet("background-color: rgba(250, 204, 21, 0.55); border: none; border-radius: 3px;")
+        # タイトル下の線は、黄色のハイライトではなく木の棒の画像(assets/wood_bar.png)にする
+        bar_pix = self._load_wood_bar_pixmap(line_width)
+        if bar_pix is not None:
+            hl = QLabel()
+            hl.setPixmap(bar_pix)
+            hl.setFixedSize(bar_pix.size())
+            hl.setStyleSheet("background: transparent; border: none;")
+        else:
+            hl = QFrame()
+            hl.setFixedHeight(tsz(9))
+            hl.setFixedWidth(line_width)
+            hl.setStyleSheet("background-color: rgba(250, 204, 21, 0.55); border: none; border-radius: 3px;")
         txt.addWidget(hl)
         txt.addSpacing(tsz(7))
         rule = QFrame()
