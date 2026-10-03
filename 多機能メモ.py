@@ -1602,8 +1602,16 @@ class MultiApp(QMainWindow):
         key = (width, height)
         if key in cache:
             return cache[key]
-        path = resource_path(os.path.join("assets", "notebook_paper.png"))
         pix = None
+        # 画びょうで留めたノートの切り抜き(assets/notebook_pin.png)が最優先。
+        # 縦横比を保ったまま幅に合わせる(切り抜きなので周りは透明で、木目背景に直接乗る)
+        pin_path = resource_path(os.path.join("assets", "notebook_pin.png"))
+        if os.path.exists(pin_path):
+            loaded = QPixmap(pin_path)
+            if not loaded.isNull():
+                cache[key] = loaded.scaledToWidth(width, Qt.SmoothTransformation)
+                return cache[key]
+        path = resource_path(os.path.join("assets", "notebook_paper.png"))
         if os.path.exists(path):
             loaded = QPixmap(path)
             if not loaded.isNull():
@@ -1973,7 +1981,7 @@ class MultiApp(QMainWindow):
         paper = QWidget()
         paper.setObjectName("memoPaper")
         # 横幅は広めに、縦幅は抑えめに(cover-fitで切り出すので元画像の縦横比に縛られない)
-        paper_width = csz(1070)
+        paper_width = csz(1000)
         paper_height = csz(720)
         notebook_pix = self._load_notebook_pixmap(paper_width, paper_height)
         stack = QStackedLayout(paper)
@@ -1996,7 +2004,7 @@ class MultiApp(QMainWindow):
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
         # 上の余白はリング穴にかぶらないよう広めに取る(イラスト上部のリング穴を避ける)
-        bh.setContentsMargins(csz(165), csz(150), csz(140), csz(70))
+        bh.setContentsMargins(csz(150), csz(200), csz(150), csz(80))
         bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
