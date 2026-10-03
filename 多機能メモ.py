@@ -59,7 +59,7 @@ MENU_CARD_COLOR = "#A67C55"
 SCREEN_FONT_TRIAL = True
 
 # タイトル(EverGrove)専用フォント。Charbroiledを優先し、未インストールならArkipelagoで代用する
-TITLE_FONT_EN = "'Charbroiled', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
+TITLE_FONT_EN = "'Charbroil', 'Charbroiled', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
 # 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
 # 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
 TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
@@ -1986,7 +1986,8 @@ class MultiApp(QMainWindow):
         fm = QFontMetrics(font)
         # 先頭の「E」と「G」は頭文字なので、1.3倍に大きくして大文字だと分かるようにする
         # (Charbroiledは頭文字がはっきり大文字の形なので、強調するのは筆記体のArkipelagoで代用している間だけ)
-        CAP = 1.0 if "Charbroiled" in QFontDatabase.families() else 1.3
+        _fams = [f.lower() for f in QFontDatabase.families()]
+        CAP = 1.0 if ("charbroil" in _fams or "charbroiled" in _fams) else 1.3
         pieces = [("E", CAP), ("ver", 1.0), ("G", CAP), ("rove", 1.0)]
         cap_font = QFont(font)
         cap_font.setPointSize(max(1, round(point_size * CAP)))
