@@ -59,7 +59,7 @@ MENU_CARD_COLOR = "#A67C55"
 SCREEN_FONT_TRIAL = True
 
 # タイトル(EverGrove)専用フォント。Charbroiledを優先し、未インストールならArkipelagoで代用する
-TITLE_FONT_EN = "'Perfect Moment', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
+TITLE_FONT_EN = "'Forest Regular', 'Forest', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
 # 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
 # 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
 TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
@@ -1964,7 +1964,7 @@ class MultiApp(QMainWindow):
         self._add_shadow(base, blur=round(20 * scale), dy=round(8 * scale), alpha=36, color=dark)
         return base
 
-    def _render_title_pixmap(self, scale=1.0):
+    def _render_title_pixmap(self, scale=1.0, max_width=None):
         # 「Multi」「Memo」を装飾フォント(Arkipelago)で描画したQPixmapを作る。
         # 筆記体フォントはスワッシュ(飾り)が通常の文字送り幅からはみ出すことがあり、
         # CSSのpadding予測では見切れを防ぎきれなかったため、実際に大きめのキャンバスへ
@@ -1972,7 +1972,7 @@ class MultiApp(QMainWindow):
         cache = getattr(self, "_title_pixmap_cache", None)
         if cache is None:
             cache = self._title_pixmap_cache = {}
-        key = round(scale * 100)
+        key = (round(scale * 100), max_width)
         if key in cache:
             return cache[key]
 
@@ -1986,10 +1986,10 @@ class MultiApp(QMainWindow):
         fm = QFontMetrics(font)
         # 先頭の「E」と「G」は頭文字なので、1.3倍に大きくして大文字だと分かるようにする
         # (Charbroiledは頭文字がはっきり大文字の形なので、強調するのは筆記体のArkipelagoで代用している間だけ)
-        # Perfect Momentは頭文字の大文字が元々はっきりしているので強調は不要。
+        # Forest Regularは頭文字の大文字が元々はっきりしているので強調は不要。
         # 筆記体のArkipelagoで代用している間だけ強調する
         _fams = [f.lower().replace(" ", "") for f in QFontDatabase.families()]
-        CAP = 1.0 if "perfectmoment" in _fams else 1.2
+        CAP = 1.0 if "forestregular" in _fams else 1.2
         pieces = [("E", CAP), ("ver", 1.0), ("G", CAP), ("rove", 1.0)]
         cap_font = QFont(font)
         cap_font.setPointSize(max(1, round(point_size * CAP)))
@@ -2023,6 +2023,10 @@ class MultiApp(QMainWindow):
             img = img.copy(bbox)
 
         pix = QPixmap.fromImage(img)
+        # フォントによっては文字幅が大きく、紙の幅や手の置き場所をはみ出す。
+        # 上限(max_width)を超えるときは、縦横比を保ったまま縮小して収める
+        if max_width and pix.width() > max_width:
+            pix = pix.scaledToWidth(max_width, Qt.SmoothTransformation)
         cache[key] = pix
         return pix
 
@@ -2089,7 +2093,9 @@ class MultiApp(QMainWindow):
         # タイトルは「だいたいこれくらい余白があれば足りるはず」という推測のpaddingではなく、
         # 実際に描画した結果から文字のインクが乗っている範囲を測って切り出す(見切れを原理的に防ぐ)
         title = QLabel()
-        title_pix = self._render_title_pixmap(text_scale)
+        # 上限幅 = 紙の幅 - 左右の余白 - 手を置く場所(右側)
+        title_pix = self._render_title_pixmap(
+            text_scale, max_width=max(80, paper_width - csz(150) - csz(150) - csz(130)))
         title.setPixmap(title_pix)
         txt.addWidget(title)
 
@@ -2191,10 +2197,16 @@ class MultiApp(QMainWindow):
                 hand_label.show()
 
             paper.on_layout = place_hand
-            # 以前の鉛筆が占めていた幅を空けて、カード全体の幅が変わらないようにする
-            _pw = self._load_pencil_pixmap(csz(130))
-            # (キャッチコピーを右に寄せた余白tsz(46)の分だけ、右側の空きを減らして全体の幅を保つ)
-            bh.addSpacing(max(0, (_pw.width() if _pw is not None else csz(94)) + csz(75) - tsz(46) - csz(30)))
+            # 右側の空きは「紙の幅 - 左余白 - タイトル/キャッチコピーの広い方 - 右余白」で決める。
+            # 幅の広いフォント(Forest Regularなど)でも、中身が紙の幅をはみ出してカードが広がらない
+            _content_w = max(title_pix.width(), 0)
+            _sub_w = sub.fontMetrics().horizontalAdvance(sub.text()) + tsz(46) + 8
+            _content_w = max(_content_w, _sub_w)
+            _spare = paper_width - csz(150) - csz(150) - _content_w
+            bh.addSpacing(max(0, _spare))
+            # 紙の幅より中身が広い場合は、紙の幅そのものを基準にカードの最小幅を確保する
+            # (フォントごとにタイトルの幅が変わっても、カード全体の幅が変わらないようにする)
+            paper.setMinimumWidth(paper_width)
         else:
             pencil = QLabel()
             pencil.setStyleSheet("background: transparent; border: none;")
@@ -2238,7 +2250,7 @@ class MultiApp(QMainWindow):
 
         container = QWidget()
         container.setMaximumWidth(sz(820))
-        container.setMinimumWidth(520)
+        container.setMinimumWidth(max(520, round(sz(620))))
         layout = QVBoxLayout(container)
         layout.setContentsMargins(sz(38), sz(10), sz(38), sz(14))
         layout.setSpacing(0)
