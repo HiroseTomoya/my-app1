@@ -298,6 +298,43 @@ class TiledBackgroundWidget(QWidget):
         super().paintEvent(event)
 
 
+# --- 画びょう付きのノート画像(assets/notebook_pin.png)を背景に描くパネル(タイマー画面用) ---
+class PinnedNotePanel(QWidget):
+    # 画像の縦横比(幅:高さ)を保ったまま、幅に合わせて高さを決める
+    def __init__(self, pixmap, parent=None):
+        super().__init__(parent)
+        self._pix = pixmap
+        self.setAttribute(Qt.WA_StyledBackground, False)
+
+    def hasHeightForWidth(self):
+        return self._pix is not None and not self._pix.isNull()
+
+    def heightForWidth(self, w):
+        if not self.hasHeightForWidth():
+            return -1
+        return round(w * self._pix.height() / self._pix.width())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.hasHeightForWidth():
+            h = self.heightForWidth(self.width())
+            if h != self.height():
+                self.setFixedHeight(h)
+
+    def paintEvent(self, event):
+        if self._pix is None or self._pix.isNull():
+            return super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        dpr = self.devicePixelRatioF()
+        scaled = self._pix.scaled(
+            round(self.width() * dpr), round(self.height() * dpr),
+            Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        scaled.setDevicePixelRatio(dpr)
+        painter.drawPixmap(0, 0, scaled)
+        painter.end()
+
+
 # --- レイアウト確定後に on_layout を呼ぶ紙ウィジェット(枝の位置合わせ用) ---
 class AnchorPaper(QWidget):
     def __init__(self, parent=None):
@@ -2320,16 +2357,29 @@ class MultiApp(QMainWindow):
 
         layout.addStretch(2)
 
-        # 中央のタイマーカード（ノート風）
-        card, cv = self._notebook_panel("timerCard", margin=False)
-        card.setMaximumWidth(560)
-        cv.setContentsMargins(30, 8, 30, 26)
-        cv.setSpacing(20)
+        # 中央のタイマーカード。画びょう付きのノート画像(assets/notebook_pin.png)を背景に敷く。
+        # 画像が無い場合は従来のクリーム色のノート風パネルにする
+        _pin_path = resource_path(os.path.join("assets", "notebook_pin.png"))
+        _pin_pix = QPixmap(_pin_path) if os.path.exists(_pin_path) else None
+        if _pin_pix is not None and not _pin_pix.isNull():
+            card = PinnedNotePanel(_pin_pix)
+            card.setObjectName("timerCard")
+            card.setMaximumWidth(640)
+            card.setMinimumWidth(480)
+            # 画像(1229x984)の紙の内側: 左は赤い罫線の右、上は破れ目の下、右下は紙の端の内側に収める
+            cv = QVBoxLayout(card)
+            cv.setContentsMargins(78, 92, 62, 62)
+            cv.setSpacing(12)
+        else:
+            card, cv = self._notebook_panel("timerCard", margin=False)
+            card.setMaximumWidth(560)
+            cv.setContentsMargins(30, 8, 30, 26)
+            cv.setSpacing(20)
 
         self.timer_display = QLabel("00:00")
         self.timer_display.setStyleSheet(f"""
             font-family: {TITLE_FONT_JA};
-            font-size: 92px;
+            font-size: 78px;
             font-weight: 800;
             color: {self.colors['text_main']};
             border: none;
@@ -2400,7 +2450,8 @@ class MultiApp(QMainWindow):
         card_row.addWidget(card)
         card_row.addStretch()
         layout.addLayout(card_row)
-        self._add_shadow(card, blur=32, dy=12, alpha=34, color=self.colors["primary"])
+        if not isinstance(card, PinnedNotePanel):   # 画像の紙には最初から影があるので不要
+            self._add_shadow(card, blur=32, dy=12, alpha=34, color=self.colors["primary"])
 
         layout.addStretch(3)
 
