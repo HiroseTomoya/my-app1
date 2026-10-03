@@ -49,6 +49,9 @@ def resource_path(relative_path):
 # 英字用と日本語用を1つのfont-familyリストにまとめてしまうと、Arkipelago(英字の
 # 手書き風フォント)がCJKグリフを持たないせいでQtの折り返し計算が崩れ、長いラベルの
 # 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
+# タイトルカードの文字色(濃い茶色)
+TITLE_TEXT_BROWN = "#4A2E1A"
+
 # ホーム画面のメニューボタンの色(全ボタン共通)
 MENU_CARD_COLOR = "#A67C55"
 
@@ -1921,7 +1924,7 @@ class MultiApp(QMainWindow):
         font.setLetterSpacing(QFont.AbsoluteSpacing, max(0.0, 1.0 * scale))
 
         fm = QFontMetrics(font)
-        parts = [("Multi", self.colors["text_main"]), ("Memo", GRADIENTS["accent"][1])]
+        parts = [("Multi", TITLE_TEXT_BROWN), ("Memo", TITLE_TEXT_BROWN)]
         natural_w = sum(fm.horizontalAdvance(t) for t, _ in parts)
         margin = max(24, point_size)  # スワッシュ用の逃げ代。文字サイズに応じて多めに確保する
         canvas_w = natural_w + margin * 2
@@ -2009,7 +2012,7 @@ class MultiApp(QMainWindow):
 
         # 日付スタンプ
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
-        date_lbl.setStyleSheet(f"color: {self.colors['text_sub']}; font-family: {TITLE_FONT_EN}; font-size: {tsz(19)}px; font-weight: 700; letter-spacing: 2px;")
+        date_lbl.setStyleSheet(f"color: {TITLE_TEXT_BROWN}; font-family: {TITLE_FONT_EN}; font-size: {tsz(19)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
         txt.addSpacing(tsz(3))
 
@@ -2041,7 +2044,7 @@ class MultiApp(QMainWindow):
         sub = QLabel("✎  あなたの毎日を、一冊に。")
         sub.setWordWrap(True)  # 紙の幅を超えそうな場合に横へはみ出さず折り返す
         sub.setStyleSheet(f"""
-            color: {self.colors['text_sub']};
+            color: {TITLE_TEXT_BROWN};
             font-family: {TITLE_FONT_JA};
             font-size: {tsz(21)}px;
             letter-spacing: 1px;
