@@ -378,7 +378,7 @@ class WoodSkinButton(QPushButton):
         painter = QPainter(self)
         pressed_or_hover = self.underMouse() or self.isDown()
         # 木目を明るめに見せるため黒の重ね方は控えめにし、ホバー時は白を薄く重ねて明るくする
-        tint, alpha = ("#FFFFFF", 38) if pressed_or_hover else ("#000000", 30)
+        tint, alpha = ("#000000", 22) if pressed_or_hover else ("#FFFFFF", 0)
         _paint_wood_tint(
             painter, self.rect(), get_button_wood_pixmap(), tint,
             alpha, self._skin_radius, dpr=self.devicePixelRatioF(),
@@ -469,7 +469,7 @@ class StyledButton(WoodSkinButton):
         self.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: white;
+                color: #4A3426;
                 font-family: {TITLE_FONT_JA if SCREEN_FONT_TRIAL else "'Meiryo UI', 'Segoe UI', sans-serif"};
                 font-size: {font_size};
                 font-weight: 700;
@@ -1533,7 +1533,7 @@ class MultiApp(QMainWindow):
         fs = "13px" if compact else "14px"
         b.setStyleSheet(f"""
             QPushButton {{
-                color: white;
+                color: #4A3426;
                 background: transparent;
                 border: none;
                 border-radius: 10px;
@@ -1633,7 +1633,7 @@ class MultiApp(QMainWindow):
         back = WoodSkinButton(back_text, radius=10)
         back.setStyleSheet("""
             QPushButton {
-                color: white;
+                color: #4A3426;
                 background: transparent;
                 border: none;
                 border-radius: 10px;
@@ -1815,7 +1815,7 @@ class MultiApp(QMainWindow):
         # 色は載せず、ホバー時だけ白を薄く重ねて明るくする(無い場合は従来の着色木目)
         button_wood = self._get_button_wood_pixmap()
         if button_wood is not None:
-            card = WoodButton(button_wood, "#000000", 28, "#FFFFFF", radius)
+            card = WoodButton(button_wood, "#FFFFFF", 0, "#000000", radius)
         else:
             card = WoodButton(self._get_wood_pixmap(), face, 220, face_hover, radius)
         card.setObjectName("menuCard")
@@ -1854,7 +1854,7 @@ class MultiApp(QMainWindow):
         name.setWordWrap(True)
         name.setMinimumWidth(0)
         name.setStyleSheet(f"""
-            color: #FFFFFF;
+            color: #4A3426;
             font-family: {title_font_family(label)};
             font-size: {sz(23 if wide else 17)}px;
             font-weight: 800;
@@ -1866,7 +1866,7 @@ class MultiApp(QMainWindow):
         sub.setWordWrap(True)
         sub.setMinimumWidth(0)
         sub.setStyleSheet(f"""
-            color: rgba(255, 255, 255, 0.85);
+            color: rgba(74, 52, 38, 0.85);
             font-family: {title_font_family(desc)};
             font-size: {sz(13)}px;
             border: none;
@@ -1874,8 +1874,8 @@ class MultiApp(QMainWindow):
         """)
 
         # 木目の濃淡で文字が読みにくくならないよう、ラベルに軽い落ち影を入れてコントラストを補う
-        self._add_shadow(name, blur=round(6 * scale), dy=1, alpha=150, color="#000000")
-        self._add_shadow(sub, blur=round(5 * scale), dy=1, alpha=140, color="#000000")
+        self._add_shadow(name, blur=round(6 * scale), dy=1, alpha=70, color="#FFFFFF")
+        self._add_shadow(sub, blur=round(5 * scale), dy=1, alpha=60, color="#FFFFFF")
 
         # 全カード共通：横並び（アイコン＋テキスト）の“背の低い”カードが基本だが、
         # 「セキュリティメモ」のように文字が2行に折り返す場合は上限を設けず
@@ -2374,7 +2374,7 @@ class MultiApp(QMainWindow):
         add_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: #FFFFFF;
+                color: #4A3426;
                 font-size: 19px;
                 font-weight: 800;
                 border: none;
@@ -2777,7 +2777,7 @@ class MultiApp(QMainWindow):
         add_subject_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: #FFFFFF;
+                color: #4A3426;
                 font-size: 19px;
                 font-weight: 800;
                 border: none;
@@ -3477,7 +3477,7 @@ class MultiApp(QMainWindow):
             b.setFixedSize(34, 32)
         b.setStyleSheet(f"""
             QPushButton {{
-                color: white;
+                color: #4A3426;
                 background: transparent;
                 border: none;
                 font-size: 13px;
