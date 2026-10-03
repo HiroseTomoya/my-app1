@@ -443,9 +443,13 @@ def get_button_wood_pixmap():
 # --- アプリ内の共通ボタン: 板の境目が中央に来る木目を貼り、文字を白で重ねる ---
 class WoodSkinButton(QPushButton):
     def __init__(self, text="", radius=10, parent=None):
-        super().__init__(text, parent)
+        super().__init__("", parent)
         self._skin_radius = radius
         self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setText(text)
+
+    def setText(self, text):
+        apply_glyph_icon(self, text)
 
     def paintEvent(self, event):
         # ホーム画面のボタンと同じ「台座の上に板が載った」立体的な見た目にする。
@@ -523,9 +527,128 @@ def make_symbol_icon(kind, color="#4A3426", size=40):
         flag.cubicTo(s * 0.72, s * 0.40, s * 0.62, s * 0.34, s * 0.52, s * 0.34)
         flag.closeSubpath()
         p.drawPath(flag)
+    else:
+        _draw_line_glyph(p, kind, s, col)
     p.end()
     pm.setDevicePixelRatio(dpr)
     return QIcon(pm)
+
+
+def _draw_line_glyph(p, kind, s, col):
+    # 40x40の座標系で描く線画アイコン(編集・削除・PDFなど。絵文字はふい字で出ないため図形で描く)
+    p.save()
+    p.scale(s / 40.0, s / 40.0)
+    pen = QPen(col, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    if kind == "edit":
+        p.translate(20, 20)
+        p.rotate(45)
+        p.setPen(Qt.NoPen)
+        p.setBrush(col)
+        p.drawRoundedRect(QRectF(-4, -16, 8, 20), 1.5, 1.5)
+        tip = QPainterPath()
+        tip.moveTo(-4, 5.5); tip.lineTo(4, 5.5); tip.lineTo(0, 15); tip.closeSubpath()
+        p.drawPath(tip)
+        p.setCompositionMode(QPainter.CompositionMode_Clear)
+        p.drawRect(QRectF(-5, -9.5, 10, 1.6))
+    elif kind == "trash":
+        p.drawLine(QPointF(8, 11), QPointF(32, 11))
+        p.drawRoundedRect(QRectF(15.5, 6, 9, 5), 1.5, 1.5)
+        body = QPainterPath()
+        body.moveTo(11, 15); body.lineTo(12.5, 33); body.lineTo(27.5, 33); body.lineTo(29, 15)
+        p.drawPath(body)
+        p.drawLine(QPointF(16.5, 19), QPointF(16.5, 29))
+        p.drawLine(QPointF(23.5, 19), QPointF(23.5, 29))
+    elif kind == "menu":
+        for y in (11, 20, 29):
+            p.drawLine(QPointF(8, y), QPointF(32, y))
+    elif kind == "doc":
+        page = QPainterPath()
+        page.moveTo(11, 5); page.lineTo(24, 5); page.lineTo(30, 11)
+        page.lineTo(30, 35); page.lineTo(11, 35); page.closeSubpath()
+        p.drawPath(page)
+        p.drawLine(QPointF(24, 5), QPointF(24, 11)); p.drawLine(QPointF(24, 11), QPointF(30, 11))
+        for y in (19, 25, 30):
+            p.drawLine(QPointF(15.5, y), QPointF(25.5, y))
+    elif kind == "clip":
+        path = QPainterPath()
+        path.moveTo(22, 25); path.lineTo(22, 14)
+        path.arcTo(QRectF(15, 10.5, 7, 7), 0, 180)
+        path.lineTo(15, 29)
+        path.arcTo(QRectF(15, 22.5, 13, 13), 180, 180)
+        path.lineTo(28, 11)
+        p.drawPath(path)
+    elif kind == "link":
+        p.translate(20, 20)
+        p.rotate(-45)
+        p.drawRoundedRect(QRectF(-16, -5, 18, 10), 5, 5)
+        p.drawRoundedRect(QRectF(-2, -5, 18, 10), 5, 5)
+    elif kind == "paste":
+        p.drawRoundedRect(QRectF(9, 9, 22, 26), 3, 3)
+        p.setBrush(col)
+        p.drawRoundedRect(QRectF(14, 5, 12, 7), 2, 2)
+        p.setBrush(Qt.NoBrush)
+        p.drawLine(QPointF(14, 21), QPointF(26, 21)); p.drawLine(QPointF(14, 27), QPointF(26, 27))
+    elif kind == "graph":
+        ax = QPainterPath()
+        ax.moveTo(8, 6); ax.lineTo(8, 33); ax.lineTo(34, 33)
+        p.drawPath(ax)
+        line = QPainterPath()
+        line.moveTo(12, 27); line.lineTo(19, 18); line.lineTo(24, 23); line.lineTo(32, 10)
+        p.drawPath(line)
+    elif kind == "check":
+        pen.setWidthF(4.2); p.setPen(pen)
+        chk = QPainterPath()
+        chk.moveTo(9, 21); chk.lineTo(17, 29); chk.lineTo(31, 11)
+        p.drawPath(chk)
+    elif kind in ("eye", "eye_off"):
+        eye = QPainterPath()
+        eye.moveTo(4, 20); eye.quadTo(20, 3, 36, 20); eye.quadTo(20, 37, 4, 20)
+        p.drawPath(eye)
+        p.setPen(Qt.NoPen); p.setBrush(col)
+        p.drawEllipse(QPointF(20, 20), 5, 5)
+        if kind == "eye_off":
+            p.setPen(pen)
+            p.drawLine(QPointF(9, 33), QPointF(31, 7))
+    elif kind in ("lock", "unlock"):
+        shackle = QPainterPath()
+        shackle.moveTo(14, 18)
+        shackle.lineTo(14, 13)
+        shackle.arcTo(QRectF(14, 6, 12, 12), 180, -180)
+        if kind == "lock":
+            shackle.lineTo(26, 18)
+        p.drawPath(shackle)
+        p.setPen(Qt.NoPen); p.setBrush(col)
+        p.drawRoundedRect(QRectF(9, 18, 22, 16), 3, 3)
+    p.restore()
+
+
+# ボタン文字の頭にある絵文字・記号 → 描画アイコンの種類
+GLYPH_ICON_KINDS = {
+    "✏️": "edit", "✏": "edit", "🗑️": "trash", "🗑": "trash", "☰": "menu", "📄": "doc",
+    "📎": "clip", "🔗": "link", "📋": "paste", "📈": "graph", "✓": "check",
+    "👁": "eye", "🙈": "eye_off", "🔒": "lock", "🔓": "unlock",
+}
+
+
+def split_glyph(text):
+    # "🗑 削除" → ("trash", "削除")。対応する記号が頭に無ければ (None, text)
+    for g in sorted(GLYPH_ICON_KINDS, key=len, reverse=True):
+        if text.startswith(g):
+            return GLYPH_ICON_KINDS[g], text[len(g):].lstrip()
+    return None, text
+
+
+def apply_glyph_icon(btn, text, color="#4A3426", size=18):
+    # ボタンに文字を設定する。頭に絵文字があれば描いたアイコンに置き換える
+    kind, rest = split_glyph(text)
+    if kind:
+        btn.setIcon(make_symbol_icon(kind, color, 40))
+        btn.setIconSize(QSize(size, size))
+        QPushButton.setText(btn, rest)
+    else:
+        QPushButton.setText(btn, text)
 
 
 # --- ボタンなどを幅に応じて自動的に折り返すレイアウト（小さいウィンドウでツールバーの
@@ -1086,7 +1209,8 @@ class StyledInputDialog(QDialog):
         brow = QHBoxLayout()
         brow.setSpacing(10)
         if self._pdf_title is not None:
-            pdf_btn = QPushButton("📄 PDFで保存")
+            pdf_btn = QPushButton()
+            apply_glyph_icon(pdf_btn, "📄 PDFで保存", self._accent)
             pdf_btn.setCursor(QCursor(Qt.PointingHandCursor))
             pdf_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -1200,7 +1324,8 @@ class NoteViewDialog(QDialog):
         brow = QHBoxLayout()
         brow.setSpacing(10)
 
-        del_btn = QPushButton("🗑 削除")
+        del_btn = QPushButton()
+        apply_glyph_icon(del_btn, "🗑 削除", COLORS['danger'])
         del_btn.setCursor(QCursor(Qt.PointingHandCursor))
         del_btn.setStyleSheet(f"""
             QPushButton {{
@@ -1214,7 +1339,8 @@ class NoteViewDialog(QDialog):
         brow.addWidget(del_btn)
 
         if self._enable_pdf:
-            pdf_btn = QPushButton("📄 PDFで保存")
+            pdf_btn = QPushButton()
+            apply_glyph_icon(pdf_btn, "📄 PDFで保存", accent)
             pdf_btn.setCursor(QCursor(Qt.PointingHandCursor))
             pdf_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -1284,8 +1410,11 @@ class FolderDragDelegate(QStyledItemDelegate):
             painter.fillRect(rect, QColor(self.colors['bg_surface']))
         text_left = 10
         if self.reorder_mode:
-            painter.setPen(QColor(self.colors['text_sub']))
-            painter.drawText(rect.adjusted(10, 0, 0, 0), Qt.AlignVCenter | Qt.AlignLeft, "☰")
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.setPen(QPen(QColor(self.colors['text_sub']), 2, Qt.SolidLine, Qt.RoundCap))
+            hx, cy = rect.left() + 12, rect.center().y()
+            for dy in (-5, 0, 5):
+                painter.drawLine(hx, cy + dy, hx + 14, cy + dy)
             text_left = 34
         painter.setPen(QColor(self.colors['text_main']))
         font = painter.font()
@@ -2440,8 +2569,8 @@ class MultiApp(QMainWindow):
             card.setMinimumWidth(480)
             # 画像(1229x984)の紙の内側: 左は赤い罫線の右、上は破れ目の下、右下は紙の端の内側に収める
             cv = QVBoxLayout(card)
-            cv.setContentsMargins(78, 92, 62, 62)
-            cv.setSpacing(12)
+            cv.setContentsMargins(78, 80, 62, 66)
+            cv.setSpacing(8)
         else:
             card, cv = self._notebook_panel("timerCard", margin=False)
             card.setMaximumWidth(560)
@@ -2451,14 +2580,17 @@ class MultiApp(QMainWindow):
         self.timer_display = QLabel("00:00")
         self.timer_display.setStyleSheet(f"""
             font-family: {TITLE_FONT_JA};
-            font-size: 78px;
+            font-size: 70px;
             font-weight: 800;
             color: {self.colors['text_main']};
             border: none;
             background: transparent;
         """)
         self.timer_display.setAlignment(Qt.AlignCenter)
+        # 数字の上下に同じだけ余白を取り、紙の上端と入力欄の間の真ん中に置く
+        cv.addStretch(1)
         cv.addWidget(self.timer_display)
+        cv.addStretch(1)
 
         in_layout = QHBoxLayout()
         in_layout.setSpacing(6)
@@ -2466,16 +2598,16 @@ class MultiApp(QMainWindow):
         self.e_min = QLineEdit("0")
         self.e_sec = QLineEdit("00")
         for entry in (self.e_hour, self.e_min, self.e_sec):
-            entry.setFixedSize(68, 54)
+            entry.setFixedSize(60, 44)
             entry.setAlignment(Qt.AlignCenter)
             entry.setMaxLength(3)
             entry.setValidator(QIntValidator(0, 999, entry))   # 数字だけ入力できる
             entry.setStyleSheet(f"""
                 font-family: {TITLE_FONT_JA};
-                font-size: 24px;
+                font-size: 21px;
                 font-weight: 700;
                 border: 2px solid {self.colors['border']};
-                border-radius: 12px;
+                border-radius: 11px;
                 background: {self.colors['bg_base']};
                 color: {self.colors['text_main']};
             """)
@@ -2498,9 +2630,11 @@ class MultiApp(QMainWindow):
         sound_layout = QHBoxLayout()
         sound_layout.setSpacing(10)
         self.sound_combo = QComboBox()
-        self.sound_combo.addItems(list(self.sounds.keys()))
-        self.sound_combo.setFixedWidth(220)
-        self.sound_combo.setFixedHeight(42)
+        for _key in self.sounds.keys():
+            # 先頭の絵文字はふい字で表示できないので、見える名前からは外す(音の名前そのものは_keyで保持)
+            self.sound_combo.addItem(re.sub(r"^\S+\s+", "", _key), _key)
+        self.sound_combo.setFixedWidth(200)
+        self.sound_combo.setFixedHeight(36)
         self.sound_combo.setStyleSheet("QComboBox { min-height: 0px; padding: 6px 14px; }")
         preview_btn = self._ghost_btn("試聴", self.colors["primary"])
         preview_btn.setIcon(make_symbol_icon("note"))
@@ -2513,9 +2647,8 @@ class MultiApp(QMainWindow):
         cv.addLayout(sound_layout)
 
         # 操作ボタン（カード内に配置・3つとも同じ塗りボタン）
-        cv.addSpacing(4)
         btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        btn_layout.setSpacing(8)
         # ▶ ■ ↺ は文字ではなく描いたアイコンにする(ふい字では記号が表示されないため)
         start_btn = StyledButton("スタート", self.colors["primary"])
         start_btn.setIcon(make_symbol_icon("play"))
@@ -2527,8 +2660,8 @@ class MultiApp(QMainWindow):
         reset_btn.setIcon(make_symbol_icon("reset"))
         reset_btn.clicked.connect(self.reset_timer)
         for b in (start_btn, stop_btn, reset_btn):
-            b.setIconSize(QSize(20, 20))
-            b.setFixedHeight(54)
+            b.setIconSize(QSize(18, 18))
+            b.setFixedHeight(44)
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn_layout.addWidget(b)
         cv.addLayout(btn_layout)
@@ -2586,7 +2719,7 @@ class MultiApp(QMainWindow):
             winsound.PlaySound(None, winsound.SND_PURGE)
 
     def preview_sound(self):
-        self._play_sound(self.sound_combo.currentText())
+        self._play_sound(self.sound_combo.currentData())
 
     TIMER_MAX_SECONDS = 99 * 3600 + 59 * 60 + 59
 
@@ -2650,12 +2783,12 @@ class MultiApp(QMainWindow):
 
     def timer_timeout(self):
         self.timer_display.setText("00:00")
-        self._play_sound(self.sound_combo.currentText(), loop=True)
+        self._play_sound(self.sound_combo.currentData(), loop=True)
         # QMessageBox.information はWindowsのシステム音を鳴らし、選択した通知音と
         # 重なって「毎回同じ音」に聞こえるため、アイコン無し(=システム音なし)で表示する
         box = QMessageBox(self)
         box.setWindowTitle("Time Up")
-        box.setText("⏰ 時間になりました！")
+        box.setText("時間になりました！")
         box.setIcon(QMessageBox.NoIcon)
         box.setStandardButtons(QMessageBox.Ok)
         box.exec()
@@ -2944,7 +3077,8 @@ class MultiApp(QMainWindow):
             is_url = entry.get("type") == "url"
             icon = "🔗" if is_url else "📄"
             label = entry.get("name") or entry.get("url") or "(名前なし)"
-            name_btn = QPushButton(f"{icon}  {label}")
+            name_btn = QPushButton()
+            apply_glyph_icon(name_btn, f"{icon}  {label}", self.colors['primary'], 16)
             name_btn.setCursor(QCursor(Qt.PointingHandCursor))
             if is_url:
                 name_btn.setToolTip(entry.get("url", ""))
@@ -2966,7 +3100,8 @@ class MultiApp(QMainWindow):
                 name_btn.clicked.connect(lambda checked=False, f=entry.get("file"): self.open_attachment(f))
             rl.addWidget(name_btn, stretch=1)
 
-            del_btn = QPushButton("🗑")
+            del_btn = QPushButton()
+            apply_glyph_icon(del_btn, "🗑", self.colors['danger'], 16)
             del_btn.setCursor(QCursor(Qt.PointingHandCursor))
             del_btn.setFixedHeight(30)
             del_btn.setStyleSheet(f"""
@@ -3564,7 +3699,8 @@ class MultiApp(QMainWindow):
         auth_layout.setSpacing(18)
         auth_layout.setAlignment(Qt.AlignCenter)
 
-        icon_lbl = QLabel("🔒")
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(make_symbol_icon("lock", self.colors['danger'], 34).pixmap(34, 34))
         icon_lbl.setFixedSize(60, 60)
         icon_lbl.setStyleSheet(f"font-size: 28px; border: none; border-radius: 18px; background-color: {self._rgba(self.colors['danger'], 0.14)};")
         icon_lbl.setAlignment(Qt.AlignCenter)
@@ -3841,7 +3977,9 @@ class MultiApp(QMainWindow):
         row_layout.setContentsMargins(12, 8, 10, 8)
         row_layout.setSpacing(12)
 
-        check = QPushButton("✓" if is_done else "")
+        check = QPushButton()
+        if is_done:
+            apply_glyph_icon(check, "✓", "#FFFFFF", 14)
         check.setFixedSize(26, 26)
         check.setCursor(QCursor(Qt.PointingHandCursor))
         if is_done:
@@ -3888,7 +4026,7 @@ class MultiApp(QMainWindow):
         done = [(i, t) for i, t in enumerate(self.todo_items) if t.get("done")]
 
         if not active and not done:
-            empty = QLabel("🌱\n\nまだタスクはありません\n下の「＋」から追加してみよう")
+            empty = QLabel("まだタスクはありません\n下の「＋」から追加してみよう")
             empty.setStyleSheet(f"color: {self.colors['text_sub']}; font-size: 15px; font-weight: 600; padding: 48px; line-height: 1.6;")
             empty.setAlignment(Qt.AlignCenter)
             self.todo_list_layout.addWidget(empty)
