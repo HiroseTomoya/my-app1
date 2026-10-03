@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import (
     QFont, QCursor, QImage, QDesktopServices, QColor, QPixmap, QPainter, QPen,
     QTextDocument, QTextCharFormat, QStandardItemModel, QStandardItem, QIcon,
-    QTextCursor, QFontMetrics, QPainterPath, QBitmap, QRegion
+    QTextCursor, QFontMetrics, QPainterPath, QBitmap, QRegion, QFontDatabase
 )
 from PySide6.QtPrintSupport import QPrinter
 
@@ -58,7 +58,8 @@ MENU_CARD_COLOR = "#A67C55"
 # 【お試し】True: タイマー以外の各画面(TO DO/メモ/カレンダー/ノート/セキュリティメモ)も手書き風フォントにする
 SCREEN_FONT_TRIAL = True
 
-TITLE_FONT_EN = "'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
+# タイトル(EverGrove)専用フォント。Charbroiledを優先し、未インストールならArkipelagoで代用する
+TITLE_FONT_EN = "'Charbroiled', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
 # 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
 # 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
 TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
@@ -1984,7 +1985,8 @@ class MultiApp(QMainWindow):
 
         fm = QFontMetrics(font)
         # 先頭の「E」と「G」は頭文字なので、1.3倍に大きくして大文字だと分かるようにする
-        CAP = 1.3
+        # (Charbroiledは頭文字がはっきり大文字の形なので、強調するのは筆記体のArkipelagoで代用している間だけ)
+        CAP = 1.0 if "Charbroiled" in QFontDatabase.families() else 1.3
         pieces = [("E", CAP), ("ver", 1.0), ("G", CAP), ("rove", 1.0)]
         cap_font = QFont(font)
         cap_font.setPointSize(max(1, round(point_size * CAP)))
@@ -2077,7 +2079,7 @@ class MultiApp(QMainWindow):
 
         # 日付スタンプ
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
-        date_lbl.setStyleSheet(f"color: {TITLE_TEXT_BROWN}; font-family: {TITLE_FONT_EN}; font-size: {tsz(19)}px; font-weight: 700; letter-spacing: 2px;")
+        date_lbl.setStyleSheet(f"color: {TITLE_TEXT_BROWN}; font-family: {TITLE_FONT_JA}; font-size: {tsz(19)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
         txt.addSpacing(tsz(3))
 
@@ -2168,7 +2170,7 @@ class MultiApp(QMainWindow):
                 if notebook_pix is None or paper.width() <= 0:
                     return
                 tl = title.mapTo(paper, QPoint(0, 0))
-                hand_h = max(36, round(title_pix.height() * 1.1))
+                hand_h = max(36, tsz(70))   # 手の大きさはタイトルの文字サイズに左右されない固定値
                 hand = hand_src.scaledToHeight(hand_h, Qt.SmoothTransformation)
                 tip_y = tl.y() + title_pix.height() * 0.45   # 文字の中ほどの高さにペン先
                 hx = tl.x() + title_pix.width() + 2
