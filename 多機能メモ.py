@@ -1700,7 +1700,7 @@ class MultiApp(QMainWindow):
         chip = QLabel()
         chip.setFixedSize(40, 40)
         chip.setAlignment(Qt.AlignCenter)
-        pix = self._load_feature_icon(icon_file, 34)
+        pix = self._load_feature_icon(icon_file, 28)
         if pix is not None:
             # 線画アイコン(濃い茶色の線)は暗い木目の上だと見えないので、白木色の下地に載せる
             chip.setStyleSheet("background: rgba(250, 245, 236, 0.95); border: none; border-radius: 13px;")
@@ -1896,7 +1896,7 @@ class MultiApp(QMainWindow):
             font-size: {sz(24 if wide else 21)}px;
             border: none;
         """)
-        pix = self._load_feature_icon(icon_file, chip_size)
+        pix = self._load_feature_icon(icon_file, round(chip_size * 0.82))
         if pix is not None:
             chip.setPixmap(pix)
         else:
