@@ -2587,10 +2587,10 @@ class MultiApp(QMainWindow):
             background: transparent;
         """)
         self.timer_display.setAlignment(Qt.AlignCenter)
-        # 数字の上下に同じだけ余白を取り、紙の上端と入力欄の間の真ん中に置く
-        cv.addStretch(1)
+        # 数字は紙の上端と入力欄の間の、やや下寄りに置く(上の余白:下の余白 = 5:2)
+        cv.addStretch(5)
         cv.addWidget(self.timer_display)
-        cv.addStretch(1)
+        cv.addStretch(2)
 
         in_layout = QHBoxLayout()
         in_layout.setSpacing(6)
