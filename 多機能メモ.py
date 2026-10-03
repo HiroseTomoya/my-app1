@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import (
     QFont, QCursor, QImage, QDesktopServices, QColor, QPixmap, QPainter, QPen,
     QTextDocument, QTextCharFormat, QStandardItemModel, QStandardItem, QIcon,
-    QTextCursor, QFontMetrics, QPainterPath, QBitmap, QRegion, QFontDatabase
+    QTextCursor, QFontMetrics, QPainterPath, QBitmap, QRegion, QFontDatabase, QIntValidator
 )
 from PySide6.QtPrintSupport import QPrinter
 
@@ -51,6 +51,10 @@ def resource_path(relative_path):
 # 文字が化けることがあったため、文字列の中身で英字用/日本語用を切り替える。
 # タイトルカードの文字色(濃い茶色)
 TITLE_TEXT_BROWN = "#4A2E1A"
+
+# 共通ボタンの立体表現: 板の下に見える台座の色と、板の縁取りの色
+BUTTON_BASE_COLOR = "#7A5230"
+BUTTON_EDGE_COLOR = "#B9976F"
 
 # ホーム画面のメニューボタンの色(全ボタン共通)
 MENU_CARD_COLOR = "#A67C55"
@@ -444,16 +448,84 @@ class WoodSkinButton(QPushButton):
         self.setCursor(QCursor(Qt.PointingHandCursor))
 
     def paintEvent(self, event):
+        # ホーム画面のボタンと同じ「台座の上に板が載った」立体的な見た目にする。
+        # 下に濃い茶色の台座を見せ、押している間は板が沈み込む
         painter = QPainter(self)
-        pressed_or_hover = self.underMouse() or self.isDown()
-        # 木目を明るめに見せるため黒の重ね方は控えめにし、ホバー時は白を薄く重ねて明るくする
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        w, h = self.width(), self.height()
+        depth = max(3, min(6, round(h * 0.09)))
+        down = self.isDown()
+        face_top = (depth - 1) if down else 0
+        face_h = h - depth
+        radius = min(self._skin_radius, face_h // 2)
+
+        # 台座(板の下に見える濃い茶色)
+        base = QRectF(0.5, depth + 0.5, w - 1, h - depth - 1)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(BUTTON_BASE_COLOR))
+        painter.drawRoundedRect(base, radius, radius)
+
+        # 木の板(押している間は下に下がる)
+        pressed_or_hover = self.underMouse() or down
         tint, alpha = ("#000000", 22) if pressed_or_hover else ("#FFFFFF", 0)
+        face_rect = QRect(0, face_top, w, face_h)
         _paint_wood_tint(
-            painter, self.rect(), get_button_wood_pixmap(), tint,
-            alpha, self._skin_radius, dpr=self.devicePixelRatioF(),
+            painter, face_rect, get_button_wood_pixmap(), tint,
+            alpha, radius, border_color=BUTTON_EDGE_COLOR, dpr=self.devicePixelRatioF(),
         )
         painter.end()
         super().paintEvent(event)
+
+
+def make_symbol_icon(kind, color="#4A3426", size=40):
+    # ▶ ■ ↺ ♪ などの記号を、フォントに頼らず図形として描いたアイコンにする。
+    # (ふい字にはこれらの記号の字形がなく、小さな点としか表示されないため)
+    dpr = 2
+    s = size * dpr
+    pm = QPixmap(s, s)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    col = QColor(color)
+    p.setPen(Qt.NoPen)
+    p.setBrush(col)
+    m = s * 0.18
+    if kind == "play":
+        path = QPainterPath()
+        path.moveTo(m + s * 0.06, m)
+        path.lineTo(s - m, s / 2)
+        path.lineTo(m + s * 0.06, s - m)
+        path.closeSubpath()
+        p.drawPath(path)
+    elif kind == "stop":
+        p.drawRoundedRect(QRectF(m, m, s - 2 * m, s - 2 * m), s * 0.08, s * 0.08)
+    elif kind == "reset":
+        pen = QPen(col, s * 0.11, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        rect = QRectF(m, m, s - 2 * m, s - 2 * m)
+        p.drawArc(rect, 40 * 16, 290 * 16)      # 上の右寄りから反時計回りにほぼ一周
+        p.setPen(Qt.NoPen)
+        p.setBrush(col)
+        ax, ay = rect.center().x() + rect.width() / 2 * 0.77, rect.center().y() - rect.height() / 2 * 0.64
+        head = QPainterPath()
+        head.moveTo(ax - s * 0.02, ay - s * 0.20)
+        head.lineTo(ax + s * 0.20, ay + s * 0.02)
+        head.lineTo(ax - s * 0.14, ay + s * 0.10)
+        head.closeSubpath()
+        p.drawPath(head)
+    elif kind == "note":
+        p.drawEllipse(QRectF(s * 0.22, s * 0.58, s * 0.30, s * 0.24))
+        p.drawRect(QRectF(s * 0.46, s * 0.20, s * 0.07, s * 0.54))
+        flag = QPainterPath()
+        flag.moveTo(s * 0.52, s * 0.20)
+        flag.cubicTo(s * 0.78, s * 0.26, s * 0.78, s * 0.46, s * 0.68, s * 0.52)
+        flag.cubicTo(s * 0.72, s * 0.40, s * 0.62, s * 0.34, s * 0.52, s * 0.34)
+        flag.closeSubpath()
+        p.drawPath(flag)
+    p.end()
+    pm.setDevicePixelRatio(dpr)
+    return QIcon(pm)
 
 
 # --- ボタンなどを幅に応じて自動的に折り返すレイアウト（小さいウィンドウでツールバーの
@@ -2389,12 +2461,15 @@ class MultiApp(QMainWindow):
         cv.addWidget(self.timer_display)
 
         in_layout = QHBoxLayout()
-        in_layout.setSpacing(10)
+        in_layout.setSpacing(6)
+        self.e_hour = QLineEdit("0")
         self.e_min = QLineEdit("0")
         self.e_sec = QLineEdit("00")
-        for entry in (self.e_min, self.e_sec):
-            entry.setFixedSize(84, 54)
+        for entry in (self.e_hour, self.e_min, self.e_sec):
+            entry.setFixedSize(68, 54)
             entry.setAlignment(Qt.AlignCenter)
+            entry.setMaxLength(3)
+            entry.setValidator(QIntValidator(0, 999, entry))   # 数字だけ入力できる
             entry.setStyleSheet(f"""
                 font-family: {TITLE_FONT_JA};
                 font-size: 24px;
@@ -2404,12 +2479,18 @@ class MultiApp(QMainWindow):
                 background: {self.colors['bg_base']};
                 color: {self.colors['text_main']};
             """)
-        min_lbl = QLabel("分"); sec_lbl = QLabel("秒")
-        for l in (min_lbl, sec_lbl):
+            # 入力した時点で、上の大きな数字にすぐ反映する(スタートを押す前でも)
+            entry.textChanged.connect(self._on_timer_input_changed)
+            # 入力欄から離れたら「90秒→1分30秒」のように繰り上げて整える
+            entry.editingFinished.connect(self._normalize_timer_inputs)
+        hour_lbl = QLabel("時間"); min_lbl = QLabel("分"); sec_lbl = QLabel("秒")
+        for l in (hour_lbl, min_lbl, sec_lbl):
             l.setStyleSheet(f"font-family: {TITLE_FONT_JA}; font-size: 15px; font-weight: 700; color: {self.colors['text_sub']}; border: none;")
         in_layout.addStretch()
+        in_layout.addWidget(self.e_hour); in_layout.addWidget(hour_lbl)
+        in_layout.addSpacing(8)
         in_layout.addWidget(self.e_min); in_layout.addWidget(min_lbl)
-        in_layout.addSpacing(14)
+        in_layout.addSpacing(8)
         in_layout.addWidget(self.e_sec); in_layout.addWidget(sec_lbl)
         in_layout.addStretch()
         cv.addLayout(in_layout)
@@ -2421,7 +2502,9 @@ class MultiApp(QMainWindow):
         self.sound_combo.setFixedWidth(220)
         self.sound_combo.setFixedHeight(42)
         self.sound_combo.setStyleSheet("QComboBox { min-height: 0px; padding: 6px 14px; }")
-        preview_btn = self._ghost_btn("♪ 試聴", self.colors["primary"])
+        preview_btn = self._ghost_btn("試聴", self.colors["primary"])
+        preview_btn.setIcon(make_symbol_icon("note"))
+        preview_btn.setIconSize(QSize(18, 18))
         preview_btn.clicked.connect(self.preview_sound)
         sound_layout.addStretch()
         sound_layout.addWidget(self.sound_combo)
@@ -2433,14 +2516,19 @@ class MultiApp(QMainWindow):
         cv.addSpacing(4)
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
-        start_btn = StyledButton("▶  スタート", self.colors["primary"])
+        # ▶ ■ ↺ は文字ではなく描いたアイコンにする(ふい字では記号が表示されないため)
+        start_btn = StyledButton("スタート", self.colors["primary"])
+        start_btn.setIcon(make_symbol_icon("play"))
         start_btn.clicked.connect(self.start_timer)
-        stop_btn = StyledButton("■  ストップ", self.colors["danger"])
+        stop_btn = StyledButton("ストップ", self.colors["danger"])
+        stop_btn.setIcon(make_symbol_icon("stop"))
         stop_btn.clicked.connect(self.stop_timer)
-        reset_btn = StyledButton("↺  リセット", self.colors["neutral"])
+        reset_btn = StyledButton("リセット", self.colors["neutral"])
+        reset_btn.setIcon(make_symbol_icon("reset"))
         reset_btn.clicked.connect(self.reset_timer)
         for b in (start_btn, stop_btn, reset_btn):
-            b.setFixedHeight(50)
+            b.setIconSize(QSize(20, 20))
+            b.setFixedHeight(54)
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn_layout.addWidget(b)
         cv.addLayout(btn_layout)
@@ -2500,23 +2588,65 @@ class MultiApp(QMainWindow):
     def preview_sound(self):
         self._play_sound(self.sound_combo.currentText())
 
-    def start_timer(self):
-        if self.timer_worker and self.timer_worker.isRunning():
+    TIMER_MAX_SECONDS = 99 * 3600 + 59 * 60 + 59
+
+    @staticmethod
+    def _format_timer(secs):
+        # 1時間以上は「1:45:04」、1時間未満は「05:30」の形で表示する
+        secs = max(0, int(secs))
+        h, rem = divmod(secs, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+
+    def _timer_input_seconds(self):
+        # 時間・分・秒の入力欄の合計秒数(空欄や数字でないものは0扱い)
+        def val(edit):
+            try:
+                return max(0, int(edit.text()))
+            except ValueError:
+                return 0
+        total = val(self.e_hour) * 3600 + val(self.e_min) * 60 + val(self.e_sec)
+        return min(total, self.TIMER_MAX_SECONDS)
+
+    def _timer_is_running(self):
+        # stop直後はスレッドが終わるまで最大1秒かかるので、停止要求済みなら「カウント中」とみなさない
+        return bool(self.timer_worker and self.timer_worker.isRunning() and self.timer_worker.is_running)
+
+    def _on_timer_input_changed(self, *_):
+        # カウント中でなければ、入力した数値をすぐ大きな表示に反映する
+        if self._timer_is_running():
             return
-        try:
-            seconds = int(self.e_min.text()) * 60 + int(self.e_sec.text())
-            if seconds <= 0:
-                return
-            
-            self.timer_worker = TimerWorker(seconds)
-            self.timer_worker.tick_signal.connect(self.update_timer_display)
-            self.timer_worker.timeout_signal.connect(self.timer_timeout)
-            self.timer_worker.start()
-        except ValueError:
-            pass
+        self.timer_display.setText(self._format_timer(self._timer_input_seconds()))
+
+    def _normalize_timer_inputs(self):
+        # 「90秒」などを「1分30秒」に繰り上げて、3つの欄をそろえる(カウント中は触らない)
+        if self._timer_is_running():
+            return
+        total = self._timer_input_seconds()
+        h, rem = divmod(total, 3600)
+        m, s = divmod(rem, 60)
+        for edit, text in ((self.e_hour, str(h)), (self.e_min, str(m)), (self.e_sec, f"{s:02d}")):
+            if edit.text() != text:
+                edit.blockSignals(True)
+                edit.setText(text)
+                edit.blockSignals(False)
+        self.timer_display.setText(self._format_timer(total))
+
+    def start_timer(self):
+        if self._timer_is_running():
+            return
+        self._normalize_timer_inputs()
+        seconds = self._timer_input_seconds()
+        if seconds <= 0:
+            return
+        self.timer_display.setText(self._format_timer(seconds))
+        self.timer_worker = TimerWorker(seconds)
+        self.timer_worker.tick_signal.connect(self.update_timer_display)
+        self.timer_worker.timeout_signal.connect(self.timer_timeout)
+        self.timer_worker.start()
 
     def update_timer_display(self, secs):
-        self.timer_display.setText(f"{secs//60:02d}:{secs%60:02d}")
+        self.timer_display.setText(self._format_timer(secs))
 
     def timer_timeout(self):
         self.timer_display.setText("00:00")
@@ -2538,9 +2668,11 @@ class MultiApp(QMainWindow):
 
     def reset_timer(self):
         self.stop_timer()
+        for edit, text in ((self.e_hour, "0"), (self.e_min, "0"), (self.e_sec, "00")):
+            edit.blockSignals(True)
+            edit.setText(text)
+            edit.blockSignals(False)
         self.timer_display.setText("00:00")
-        self.e_min.setText("0")
-        self.e_sec.setText("00")
 
 
     # --- 2. メモ帳機能 ---
