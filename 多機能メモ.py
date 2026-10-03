@@ -2078,7 +2078,9 @@ class MultiApp(QMainWindow):
         body.setStyleSheet("background: transparent;")
         bh = QHBoxLayout(body)
         # 上の余白はリング穴にかぶらないよう広めに取る(イラスト上部のリング穴を避ける)
-        bh.setContentsMargins(csz(150), csz(200), csz(150), csz(80))
+        # 左余白(タイトル・キャッチコピーを右へ寄せる量)。右余白は紙の端に合わせて少し詰める
+        LEFT_M, RIGHT_M = csz(185), csz(120)
+        bh.setContentsMargins(LEFT_M, csz(200), RIGHT_M, csz(80))
         bh.setSpacing(csz(20))
 
         txt = QVBoxLayout()
@@ -2095,7 +2097,7 @@ class MultiApp(QMainWindow):
         title = QLabel()
         # 上限幅 = 紙の幅 - 左右の余白 - 手を置く場所(右側)
         title_pix = self._render_title_pixmap(
-            text_scale, max_width=max(80, paper_width - csz(150) - csz(150) - csz(130)))
+            text_scale, max_width=max(80, paper_width - LEFT_M - RIGHT_M - csz(60)))
         title.setPixmap(title_pix)
         txt.addWidget(title)
 
@@ -2182,7 +2184,7 @@ class MultiApp(QMainWindow):
                 hand_h = max(36, tsz(70))   # 手の大きさはタイトルの文字サイズに左右されない固定値
                 hand = hand_src.scaledToHeight(hand_h, Qt.SmoothTransformation)
                 tip_y = tl.y() + title_pix.height() * 0.45   # 文字の中ほどの高さにペン先
-                hx = tl.x() + title_pix.width() + 2
+                hx = tl.x() + title_pix.width() + 2 + tsz(16)   # 手を少しだけ右へ
                 hy = round(tip_y - hand_h * 0.97)            # 画像内のペン先は下端(約97%の高さ)
                 canvas = QPixmap(paper.size())
                 canvas.fill(Qt.transparent)
@@ -2202,7 +2204,7 @@ class MultiApp(QMainWindow):
             _content_w = max(title_pix.width(), 0)
             _sub_w = sub.fontMetrics().horizontalAdvance(sub.text()) + tsz(46) + 8
             _content_w = max(_content_w, _sub_w)
-            _spare = paper_width - csz(150) - csz(150) - _content_w
+            _spare = paper_width - LEFT_M - RIGHT_M - _content_w
             bh.addSpacing(max(0, _spare))
             # 紙の幅より中身が広い場合は、紙の幅そのものを基準にカードの最小幅を確保する
             # (フォントごとにタイトルの幅が変わっても、カード全体の幅が変わらないようにする)
