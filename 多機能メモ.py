@@ -2121,11 +2121,7 @@ class MultiApp(QMainWindow):
             hl.setStyleSheet("background-color: rgba(250, 204, 21, 0.55); border: none; border-radius: 3px;")
         txt.addWidget(hl)
         txt.addSpacing(tsz(7))
-        rule = QFrame()
-        rule.setFixedHeight(2)
-        rule.setFixedWidth(line_width)
-        rule.setStyleSheet(f"background-color: {self.PAPER_RULE}; border: none;")
-        txt.addWidget(rule)
+        # 枝の下の線は表示しない
 
         txt.addSpacing(tsz(2))
         sub = QLabel("✎  あなたの毎日を、一冊に。")
