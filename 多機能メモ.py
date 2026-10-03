@@ -14,7 +14,7 @@ import calendar #カレンダー機能をモジュール
 # PySide6 モジュールのインポート
 from PySide6.QtCore import (
     Qt, QThread, Signal, Slot, QUrl, QEvent, QPoint, QPointF, QRect, QRectF, QSize,
-    QByteArray, QBuffer, QIODevice
+    QByteArray, QBuffer, QIODevice, QTimer
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLayout,
@@ -286,6 +286,25 @@ class TiledBackgroundWidget(QWidget):
             painter.drawPixmap(round(x), round(y), scaled)
             painter.end()
         super().paintEvent(event)
+
+
+# --- レイアウト確定後に on_layout を呼ぶ紙ウィジェット(枝の位置合わせ用) ---
+class AnchorPaper(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.on_layout = None
+
+    def _run_anchor(self):
+        if self.on_layout:
+            self.on_layout()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._run_anchor)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._run_anchor)
 
 
 def _paint_wood_tint(painter, rect, wood_pixmap, tint_color, tint_alpha, radius, border_color=None, border_width=1, dpr=1.0):
@@ -2002,7 +2021,7 @@ class MultiApp(QMainWindow):
         # アプリ名(タイトル)のカードは、イラスト(assets/notebook_paper.png)を背景に敷き、
         # その上に日付・タイトル等を重ねる。イラスト側にすでにリング穴・赤い罫線・
         # マスキングテープが描かれているので、コードで描いていた分は不要になった
-        paper = QWidget()
+        paper = AnchorPaper()
         paper.setObjectName("memoPaper")
         # 横幅は広めに、縦幅は抑えめに(cover-fitで切り出すので元画像の縦横比に縛られない)
         paper_width = csz(1000)
@@ -2052,10 +2071,40 @@ class MultiApp(QMainWindow):
         # タイトル下の線は、黄色のハイライトではなく木の棒の画像(assets/wood_bar.png)にする
         bar_pix = self._load_wood_bar_pixmap(line_width)
         if bar_pix is not None:
-            hl = QLabel()
-            hl.setPixmap(bar_pix)
+            # レイアウト内には同じ大きさの空き枠だけ置き、枝そのものは紙の上に直接配置する。
+            # 枝の左端を、傾いた紙の左の縁にぴったり合わせるため(下のanchor_branchで位置決め)
+            hl = QWidget()
             hl.setFixedSize(bar_pix.size())
-            hl.setStyleSheet("background: transparent; border: none;")
+            hl.setStyleSheet("background: transparent;")
+            branch_label = QLabel(paper)
+            branch_label.setStyleSheet("background: transparent; border: none;")
+            branch_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            notebook_img = notebook_pix.toImage() if notebook_pix is not None else None
+
+            def anchor_branch():
+                if notebook_img is None:
+                    return
+                top_left = hl.mapTo(paper, QPoint(0, 0))
+                # 枝の左端(太い根元)の高さでの、紙の左端のx座標を画像の透明度から探す
+                cy = min(max(top_left.y() + round(hl.height() * 0.6), 0), notebook_img.height() - 1)
+                # 紙の画像は(幅の広い)枠の中で中央寄せされているので、その左の余白分を足す
+                img_x0 = max(0, (paper.width() - notebook_img.width()) // 2)
+                edge_x = img_x0
+                for x in range(notebook_img.width()):
+                    if notebook_img.pixelColor(x, cy).alpha() > 128:
+                        edge_x = img_x0 + x
+                        break
+                end_x = top_left.x() + hl.width()
+                w = max(1, end_x - edge_x)
+                pix = self._load_wood_bar_pixmap(w)
+                if pix is None:
+                    return
+                branch_label.setPixmap(pix)
+                branch_label.setGeometry(edge_x, top_left.y(), pix.width(), pix.height())
+                branch_label.raise_()
+                branch_label.show()
+
+            paper.on_layout = anchor_branch
         else:
             hl = QFrame()
             hl.setFixedHeight(tsz(9))
