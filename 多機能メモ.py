@@ -59,7 +59,7 @@ MENU_CARD_COLOR = "#A67C55"
 SCREEN_FONT_TRIAL = True
 
 # タイトル(EverGrove)専用フォント。Charbroiledを優先し、未インストールならArkipelagoで代用する
-TITLE_FONT_EN = "'Christopherhand', 'Christopher Hand', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
+TITLE_FONT_EN = "'Dancing Script', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
 # 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
 # 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
 TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
@@ -1976,9 +1976,7 @@ class MultiApp(QMainWindow):
         if key in cache:
             return cache[key]
 
-        # Christopher Handは同じポイント数でもかなり小さく見えるので、このフォントのときだけ大きく描く
-        _has_ch = "christopherhand" in [f.lower().replace(" ", "") for f in QFontDatabase.families()]
-        point_size = max(1, round(52 * scale * (1.75 if _has_ch else 1.0)))
+        point_size = max(1, round(52 * scale))
         font = QFont()
         font.setFamilies([f.strip(" '") for f in TITLE_FONT_EN.split(",")])
         font.setPointSize(point_size)
@@ -1988,10 +1986,10 @@ class MultiApp(QMainWindow):
         fm = QFontMetrics(font)
         # 先頭の「E」と「G」は頭文字なので、1.3倍に大きくして大文字だと分かるようにする
         # (Charbroiledは頭文字がはっきり大文字の形なので、強調するのは筆記体のArkipelagoで代用している間だけ)
-        # Christopher Handは大文字と小文字の差がはっきりしているので頭文字の強調は不要。
+        # Dancing Scriptは頭文字の大文字が元々大きく華やかなので強調は不要。
         # 筆記体のArkipelagoで代用している間だけ強調する
         _fams = [f.lower().replace(" ", "") for f in QFontDatabase.families()]
-        CAP = 1.0 if "christopherhand" in _fams else 1.2
+        CAP = 1.0 if "dancingscript" in _fams else 1.2
         pieces = [("E", CAP), ("ver", 1.0), ("G", CAP), ("rove", 1.0)]
         cap_font = QFont(font)
         cap_font.setPointSize(max(1, round(point_size * CAP)))
