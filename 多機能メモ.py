@@ -2161,9 +2161,9 @@ class MultiApp(QMainWindow):
                 if notebook_pix is None or paper.width() <= 0:
                     return
                 tl = title.mapTo(paper, QPoint(0, 0))
-                hand_h = max(40, round(title_pix.height() * 1.45))
+                hand_h = max(36, round(title_pix.height() * 0.95))
                 hand = hand_src.scaledToHeight(hand_h, Qt.SmoothTransformation)
-                tip_y = tl.y() + title_pix.height() * 0.78   # 文字の下側(書いている線)にペン先
+                tip_y = tl.y() + title_pix.height() * 0.45   # 文字の中ほどよりやや上にペン先
                 hx = tl.x() + title_pix.width() + 4
                 hy = round(tip_y - hand_h * 0.46)
                 canvas = QPixmap(paper.size())
