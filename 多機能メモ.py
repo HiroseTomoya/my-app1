@@ -59,7 +59,7 @@ MENU_CARD_COLOR = "#A67C55"
 SCREEN_FONT_TRIAL = True
 
 # タイトル(EverGrove)専用フォント。Charbroiledを優先し、未インストールならArkipelagoで代用する
-TITLE_FONT_EN = "'Dancing Script', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
+TITLE_FONT_EN = "'Dreaming', 'Arkipelago', 'Segoe UI', 'Meiryo UI', sans-serif"
 # 「ふい字」のTTFは内部のフォント名が'HuiFontP'として登録されるため(名前テーブルの
 # 日本語名レコードが文字化けしており、OSは英語名の'HuiFontP'を使う)、'HuiFontP'を先に書く
 TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino Sans', sans-serif"
@@ -1986,10 +1986,10 @@ class MultiApp(QMainWindow):
         fm = QFontMetrics(font)
         # 先頭の「E」と「G」は頭文字なので、1.3倍に大きくして大文字だと分かるようにする
         # (Charbroiledは頭文字がはっきり大文字の形なので、強調するのは筆記体のArkipelagoで代用している間だけ)
-        # Dancing Scriptは頭文字の大文字が元々大きく華やかなので強調は不要。
+        # Dreamingは頭文字の大文字が元々大きく華やかなので強調は不要。
         # 筆記体のArkipelagoで代用している間だけ強調する
         _fams = [f.lower().replace(" ", "") for f in QFontDatabase.families()]
-        CAP = 1.0 if "dancingscript" in _fams else 1.2
+        CAP = 1.0 if "dreaming" in _fams else 1.2
         pieces = [("E", CAP), ("ver", 1.0), ("G", CAP), ("rove", 1.0)]
         cap_font = QFont(font)
         cap_font.setPointSize(max(1, round(point_size * CAP)))
@@ -2084,7 +2084,7 @@ class MultiApp(QMainWindow):
         date_lbl = QLabel(datetime.now().strftime("%Y . %m . %d"))
         date_lbl.setStyleSheet(f"color: {TITLE_TEXT_BROWN}; font-family: {TITLE_FONT_JA}; font-size: {tsz(19)}px; font-weight: 700; letter-spacing: 2px;")
         txt.addWidget(date_lbl)
-        txt.addSpacing(tsz(3))
+        txt.addSpacing(tsz(14))   # 「E」「G」の飾りが日付に重ならないよう間隔を空ける
 
         # タイトルは「だいたいこれくらい余白があれば足りるはず」という推測のpaddingではなく、
         # 実際に描画した結果から文字のインクが乗っている範囲を測って切り出す(見切れを原理的に防ぐ)
