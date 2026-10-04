@@ -1964,7 +1964,8 @@ class MultiApp(QMainWindow):
         h.addWidget(chip)
 
         ttl = QLabel(title)
-        ttl.setStyleSheet(f"color: {self.colors['text_main']}; font-size: 20px; font-weight: 800; border: none; background: transparent;")
+        # 暗い木目の上で読めるよう、ボタンと同じ白木色にする
+        ttl.setStyleSheet(f"color: #FAF5EC; font-size: 20px; font-weight: 800; border: none; background: transparent;")
         h.addWidget(ttl)
         h.addStretch()
         return bar
