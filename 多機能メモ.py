@@ -3883,7 +3883,7 @@ class MultiApp(QMainWindow):
         list_frame, frame_layout = self._notebook_panel("todoFrame")
 
         # ノート(紙)の左上に「タスク」の見出しを書く
-        todo_title = QLabel("タスク")
+        todo_title = self.todo_title_lbl = QLabel("タスク (0)")
         # 文字の大きさ・太さ・フォントは「完了済み (n)」の見出しと同じ(色だけ濃いまま)
         todo_title.setStyleSheet(
             f"color: {self.colors['text_main']}; font-size: 13px; font-weight: 700; "
@@ -4033,6 +4033,8 @@ class MultiApp(QMainWindow):
 
         active = [(i, t) for i, t in enumerate(self.todo_items) if not t.get("done")]
         done = [(i, t) for i, t in enumerate(self.todo_items) if t.get("done")]
+        # 「完了済み (n)」と同じ形で、未完了のタスク数を見出しに出す
+        self.todo_title_lbl.setText(f"タスク ({len(active)})")
 
         if not active and not done:
             empty = QLabel("まだタスクはありません\n下の「＋」から追加してみよう")
