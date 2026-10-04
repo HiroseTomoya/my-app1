@@ -3878,9 +3878,16 @@ class MultiApp(QMainWindow):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        layout.addWidget(self._make_header("📝", "タスク", self.colors["accent"], icon_file="todo"))
+        layout.addWidget(self._make_header("📝", "TO DO", self.colors["accent"], icon_file="todo"))
 
         list_frame, frame_layout = self._notebook_panel("todoFrame")
+
+        # ノート(紙)の左上に「タスク」の見出しを書く
+        todo_title = QLabel("タスク")
+        todo_title.setStyleSheet(
+            f"font-family: {TITLE_FONT_JA}; font-size: 24px; font-weight: 800; "
+            f"color: {self.colors['text_main']}; border: none; background: transparent; padding: 0px 4px 2px 4px;")
+        frame_layout.addWidget(todo_title)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
