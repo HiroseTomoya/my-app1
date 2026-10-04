@@ -3884,9 +3884,10 @@ class MultiApp(QMainWindow):
 
         # ノート(紙)の左上に「タスク」の見出しを書く
         todo_title = QLabel("タスク")
+        # 文字の大きさ・太さ・フォントは「完了済み (n)」の見出しと同じ(色だけ濃いまま)
         todo_title.setStyleSheet(
-            f"font-family: {TITLE_FONT_JA}; font-size: 24px; font-weight: 800; "
-            f"color: {self.colors['text_main']}; border: none; background: transparent; padding: 0px 4px 2px 4px;")
+            f"color: {self.colors['text_main']}; font-size: 13px; font-weight: 700; "
+            f"border: none; background: transparent; padding: 0px 0px 0px 10px;")
         frame_layout.addWidget(todo_title)
 
         scroll = QScrollArea()
