@@ -3878,7 +3878,7 @@ class MultiApp(QMainWindow):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        layout.addWidget(self._make_header("📝", "TO DO", self.colors["accent"], icon_file="todo"))
+        layout.addWidget(self._make_header("📝", "タスク", self.colors["accent"], icon_file="todo"))
 
         list_frame, frame_layout = self._notebook_panel("todoFrame")
 
