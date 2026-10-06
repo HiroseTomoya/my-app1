@@ -13,7 +13,7 @@ import calendar #カレンダー機能をモジュール
 
 # PySide6 モジュールのインポート
 from PySide6.QtCore import (
-    Qt, QThread, Signal, Slot, QUrl, QEvent, QPoint, QPointF, QRect, QRectF, QSize,
+    Qt, QThread, Signal, Slot, QUrl, QEvent, QPoint, QPointF, QRect, QRectF, QSize, QDate, QTime,
     QByteArray, QBuffer, QIODevice, QTimer
 )
 from PySide6.QtWidgets import (
@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QStackedWidget, QTextEdit,
     QScrollArea, QDialog, QComboBox, QMessageBox, QGridLayout, QFileDialog,
     QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QSizePolicy, QFrame, QListWidget, QAbstractItemView,
-    QListWidgetItem, QListView, QStyledItemDelegate, QStyle, QStackedLayout
+    QListWidgetItem, QListView, QStyledItemDelegate, QStyle, QDateEdit, QCheckBox, QStackedLayout
 )
 from PySide6.QtGui import (
     QFont, QCursor, QImage, QDesktopServices, QColor, QPixmap, QPainter, QPen,
@@ -72,6 +72,17 @@ TITLE_FONT_JA = "'HuiFontP', 'ふい字', 'Meiryo UI', 'Yu Gothic UI', 'Hiragino
 def title_font_family(text):
     # タイトルカード(MultiMemo・日付)以外は、英数字も含めて全部ふい字にする
     return TITLE_FONT_JA
+
+
+def load_bundled_fonts():
+    # アプリに同梱したフォント(fontsフォルダ)を起動時に読み込む。PCにインストールされて
+    # いなくても、またexe化した環境でも、手書き風フォントが確実に使われるようにする
+    folder = resource_path("fonts")
+    if not os.path.isdir(folder):
+        return
+    for name in sorted(os.listdir(folder)):
+        if name.lower().endswith((".ttf", ".otf")):
+            QFontDatabase.addApplicationFont(os.path.join(folder, name))
 
 
 def fui_font(point_size):
@@ -971,6 +982,7 @@ class SketchDialog(QDialog):
     def __init__(self, colors, parent=None):
         super().__init__(parent)
         self.setWindowTitle("手書きスケッチ")
+        self.setStyleSheet(f"* {{ font-family: {TITLE_FONT_JA}; }}")
         self.result_image = None
         self._colors_preset = ["#1F2937", "#E11D48", "#2563EB", "#0D9488", "#EA580C"]
 
@@ -1055,6 +1067,7 @@ class FunctionGraphDialog(QDialog):
     def __init__(self, colors, parent=None):
         super().__init__(parent)
         self.setWindowTitle("関数グラフを挿入")
+        self.setStyleSheet(f"* {{ font-family: {TITLE_FONT_JA}; }}")
         self.result_image = None
         self._colors = colors
 
@@ -1276,6 +1289,130 @@ class StyledInputDialog(QDialog):
 
 
 # --- メモ閲覧ダイアログ（読み取り専用） ---
+class TodoEditDialog(QDialog):
+    # TODOの内容と期限（任意）を入力するダイアログ。期限はカレンダーに自動で反映される
+    def __init__(self, title, text="", due_key=None, due_time=None, accent=None, parent=None):
+        super().__init__(parent)
+        accent = accent or COLORS['accent']
+        self.setModal(True)
+        self.setWindowTitle(title)
+        # 他の画面・ダイアログと同じ手書き風フォントにそろえる（日付・時刻の選択欄も含む）
+        self.setStyleSheet(
+            f"QDialog {{ background-color: {COLORS['bg_base']}; }} "
+            f"* {{ font-family: {TITLE_FONT_JA}; }} "
+            f"QCheckBox, QLabel {{ font-size: 14px; }} "
+            f"QLineEdit, QComboBox, QDateEdit {{ font-size: 16px; }}")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(28, 24, 28, 22)
+        lay.setSpacing(14)
+
+        head = QLabel(title)
+        head.setStyleSheet(f"color: {COLORS['text_main']}; font-size: 18px; font-weight: 800; background: transparent; border: none;")
+        lay.addWidget(head)
+
+        self.text_input = QLineEdit(text)
+        self.text_input.setPlaceholderText("タスク内容を入力してください")
+        self.text_input.setMinimumWidth(380)
+        self.text_input.setMinimumHeight(40)
+        lay.addWidget(self.text_input)
+
+        due_row = QHBoxLayout()
+        due_row.setSpacing(10)
+        self.due_check = QCheckBox("期限を設定する（カレンダーに自動で表示）")
+        due_row.addWidget(self.due_check)
+        due_row.addStretch()
+        lay.addLayout(due_row)
+
+        self.due_edit = QDateEdit()
+        self.due_edit.setCalendarPopup(True)
+        self.due_edit.setDisplayFormat("yyyy年M月d日")
+        self.due_edit.setMinimumHeight(38)
+        self.due_edit.setDate(QDate.currentDate())
+        if due_key:
+            try:
+                y, m, d = (int(v) for v in due_key.split("-"))
+                self.due_edit.setDate(QDate(y, m, d))
+                self.due_check.setChecked(True)
+            except ValueError:
+                pass
+        self.due_edit.setEnabled(self.due_check.isChecked())
+        self.due_check.toggled.connect(self.due_edit.setEnabled)
+        lay.addWidget(self.due_edit)
+
+        self.time_check = QCheckBox("何時までかも設定する")
+        lay.addWidget(self.time_check)
+        # 時刻はプルダウンで選ぶ（時は0〜23、分は5分刻み）
+        self.hour_combo = QComboBox()
+        self.hour_combo.addItems([f"{h}" for h in range(24)])
+        self.min_combo = QComboBox()
+        self.min_combo.addItems([f"{m:02d}" for m in range(0, 60, 5)])
+        for cb in (self.hour_combo, self.min_combo):
+            cb.setMinimumHeight(38)
+            cb.setMaxVisibleItems(10)
+            cb.setCursor(QCursor(Qt.PointingHandCursor))
+        self.hour_combo.setCurrentIndex(23)
+        self.min_combo.setCurrentIndex(self.min_combo.count() - 1)
+        if due_time:
+            try:
+                hh, mm_ = (int(v) for v in due_time.split(":"))
+                if 0 <= hh <= 23 and 0 <= mm_ <= 59:
+                    self.hour_combo.setCurrentIndex(hh)
+                    if self.min_combo.findText(f"{mm_:02d}") < 0:
+                        self.min_combo.addItem(f"{mm_:02d}")
+                    self.min_combo.setCurrentIndex(self.min_combo.findText(f"{mm_:02d}"))
+                    self.time_check.setChecked(True)
+            except ValueError:
+                pass
+        time_row = QHBoxLayout()
+        time_row.setSpacing(8)
+        time_row.addWidget(self.hour_combo, 1)
+        time_row.addWidget(QLabel("時"))
+        time_row.addWidget(self.min_combo, 1)
+        time_row.addWidget(QLabel("分まで"))
+        self._sync_time_enabled()
+        self.due_check.toggled.connect(self._sync_time_enabled)
+        self.time_check.toggled.connect(self._sync_time_enabled)
+        lay.addLayout(time_row)
+
+        brow = QHBoxLayout()
+        brow.addStretch()
+        cancel = QPushButton("キャンセル")
+        cancel.setCursor(QCursor(Qt.PointingHandCursor))
+        cancel.setStyleSheet(f"""
+            QPushButton {{
+                color: {COLORS['text_sub']}; background: transparent;
+                border: 1px solid {COLORS['border']}; border-radius: 11px;
+                padding: 11px 20px; font-size: 14px; font-weight: 700;
+            }}
+            QPushButton:hover {{ background: {COLORS['bg_surface']}; }}
+        """)
+        cancel.clicked.connect(self.reject)
+        brow.addWidget(cancel)
+        ok = StyledButton("決定", accent, compact=True)
+        ok.setMinimumHeight(44)
+        ok.clicked.connect(self.accept)
+        brow.addWidget(ok)
+        lay.addLayout(brow)
+        self.text_input.returnPressed.connect(self.accept)
+
+    def _sync_time_enabled(self, *_):
+        # 時刻は期限の日付を設定したときだけ指定できる
+        self.time_check.setEnabled(self.due_check.isChecked())
+        enabled = self.due_check.isChecked() and self.time_check.isChecked()
+        self.hour_combo.setEnabled(enabled)
+        self.min_combo.setEnabled(enabled)
+
+    def get_values(self):
+        due = None
+        due_time = None
+        if self.due_check.isChecked():
+            d = self.due_edit.date()
+            due = f"{d.year()}-{d.month()}-{d.day()}"
+            if self.time_check.isChecked():
+                due_time = f"{int(self.hour_combo.currentText()):02d}:{self.min_combo.currentText()}"
+        return self.text_input.text().strip(), due, due_time
+
+
 class NoteViewDialog(QDialog):
     def __init__(self, title, text, accent=None, parent=None, enable_pdf=False):
         super().__init__(parent)
@@ -1991,7 +2128,9 @@ class MultiApp(QMainWindow):
             self.calendar_notes = d.get("calendar", {})
             self.memo_attachments = d.get("attachments", {})
             self.note_data = d.get("note", {"新しい科目": []})
+            self.todo_by_date = bool(d.get("todo_by_date", False))
         else:
+            self.todo_by_date = False
             self.todo_items, self.memo_data, self.calendar_notes = [], {"メイン": ""}, {}
             self.memo_attachments = {}
             self.note_data = {"新しい科目": []}
@@ -2025,9 +2164,11 @@ class MultiApp(QMainWindow):
                     "text": item.get("text", ""),
                     "done": bool(item.get("done", False)),
                     "done_at": item.get("done_at"),
+                    "due": item.get("due"),
+                    "due_time": item.get("due_time"),
                 })
             else:
-                normalized.append({"text": str(item), "done": False, "done_at": None})
+                normalized.append({"text": str(item), "done": False, "done_at": None, "due": None, "due_time": None})
         return normalized
 
     def _save_json_safe(self, filepath, data):
@@ -2042,7 +2183,7 @@ class MultiApp(QMainWindow):
         self.save_current_note_entry_content()
         data = {"todo": self.todo_items, "memo": self.memo_data,
                 "calendar": self.calendar_notes, "attachments": self.memo_attachments,
-                "note": self.note_data}
+                "note": self.note_data, "todo_by_date": self.todo_by_date}
         self._save_json_safe(self.DATA_FILE, data)
         vault = {"hash": self.master_hash, "birth_hash": self.birth_hash, "items": self.vault_items}
         self._save_json_safe(self.VAULT_FILE, vault)
@@ -3602,7 +3743,20 @@ class MultiApp(QMainWindow):
         buffer.close()
         b64 = bytes(buf.toBase64()).decode("ascii")
         cursor = self.note_content_widget.textCursor()
-        cursor.insertHtml(f'<br><img src="data:image/png;base64,{b64}"><br>')
+        cursor.beginEditBlock()
+        # 画像は独立した段落に置き、直前に内容がある場合は空行を1つ挟んで、
+        # 画像と画像の間にも文字を書けるようにする。挿入後は必ず空の段落に
+        # カーソルを置き、そのまま続きを入力できるようにする
+        block = cursor.block()
+        prev = block.previous()
+        if block.text() == "":
+            if prev.isValid() and prev.text() != "":
+                cursor.insertBlock()
+        else:
+            cursor.insertBlock()
+        cursor.insertHtml(f'<img src="data:image/png;base64,{b64}">')
+        cursor.insertBlock()
+        cursor.endEditBlock()
         self.note_content_widget.setTextCursor(cursor)
         self.note_content_widget.setFocus()
         self.save_current_note_entry_content()
@@ -3888,7 +4042,30 @@ class MultiApp(QMainWindow):
         todo_title.setStyleSheet(
             f"color: {self.colors['text_main']}; font-size: 13px; font-weight: 700; "
             f"border: none; background: transparent; padding: 0px 0px 0px 10px;")
-        frame_layout.addWidget(todo_title)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 4, 0)
+        title_row.addWidget(todo_title)
+        title_row.addStretch()
+        self.todo_view_btn = QPushButton("📅 日付別に表示")
+        self.todo_view_btn.setCheckable(True)
+        self.todo_view_btn.setChecked(self.todo_by_date)
+        self.todo_view_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.todo_view_btn.setToolTip("期限を決めたタスクを日付ごとにまとめて表示します")
+        self.todo_view_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {self.colors['text_sub']}; background: transparent;
+                border: 1px solid {self.colors['border']}; border-radius: 9px;
+                padding: 5px 12px; font-size: 12px; font-weight: 700;
+            }}
+            QPushButton:hover {{ border-color: {self.colors['accent']}; color: {self.colors['accent']}; }}
+            QPushButton:checked {{
+                background: {self._rgba(self.colors['accent'], 0.14)};
+                border-color: {self.colors['accent']}; color: {self.colors['accent']};
+            }}
+        """)
+        self.todo_view_btn.toggled.connect(self._on_todo_view_toggled)
+        title_row.addWidget(self.todo_view_btn)
+        frame_layout.addLayout(title_row)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -3913,10 +4090,36 @@ class MultiApp(QMainWindow):
         self.screens["todo"] = screen
 
     def add_todo_item(self):
-        dialog = StyledInputDialog("タスクの追加", "タスク内容を入力してください", accent=self.colors["accent"], parent=self)
-        if dialog.exec_() == QDialog.Accepted and dialog.get_value().strip():
-            self.todo_items.append({"text": dialog.get_value().strip(), "done": False, "done_at": None})
-            self.refresh_todo()
+        dialog = TodoEditDialog("タスクの追加", accent=self.colors["accent"], parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            text, due, due_time = dialog.get_values()
+            if text:
+                self.todo_items.append({"text": text, "done": False, "done_at": None,
+                                        "due": due, "due_time": due_time})
+                self.refresh_todo()
+
+    def _due_label(self, due_key, due_time=None):
+        # 期限の表示文字列と色（期限切れ=赤、今日=オレンジ、それ以外=控えめ）
+        try:
+            y, m, d = (int(v) for v in due_key.split("-"))
+            due = datetime(y, m, d).date()
+        except ValueError:
+            return due_key, self.colors["text_sub"]
+        now = datetime.now()
+        diff = (due - now.date()).days
+        text = f"{m}/{d}" + (f" {due_time}まで" if due_time else "")
+        if diff < 0:
+            return f"{text}（{-diff}日超過）", self.colors["danger"]
+        if diff == 0:
+            if due_time and now.strftime("%H:%M") > due_time:
+                return f"{text}（時間超過）", self.colors["danger"]
+            return f"{text}（今日）", self.colors["warn"]
+        return f"{text}（あと{diff}日）", self.colors["text_sub"]
+
+    def _todos_due_on(self, key):
+        # 時刻が決まっているものを早い順に、時刻なしを後ろに並べる
+        items = [t for t in self.todo_items if t.get("due") == key]
+        return sorted(items, key=lambda t: (t.get("due_time") is None, t.get("due_time") or ""))
 
     def toggle_todo_done(self, index, done):
         if 0 <= index < len(self.todo_items):
@@ -3927,12 +4130,15 @@ class MultiApp(QMainWindow):
     def edit_todo(self, index):
         if not (0 <= index < len(self.todo_items)):
             return
-        old_text = self.todo_items[index].get("text", "")
-        dialog = StyledInputDialog("タスクの編集", "タスク内容を編集してください", old_text, accent=self.colors["accent"], parent=self)
+        task = self.todo_items[index]
+        dialog = TodoEditDialog("タスクの編集", task.get("text", ""), task.get("due"), task.get("due_time"),
+                                accent=self.colors["accent"], parent=self)
         if dialog.exec_() == QDialog.Accepted:
-            new_text = dialog.get_value().strip()
-            if new_text and new_text != old_text:
-                self.todo_items[index]["text"] = new_text
+            text, due, due_time = dialog.get_values()
+            if text:
+                task["text"] = text
+                task["due"] = due
+                task["due_time"] = due_time
                 self.refresh_todo()
 
     def delete_todo(self, index):
@@ -4013,6 +4219,12 @@ class MultiApp(QMainWindow):
         else:
             lbl.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {self.colors['text_main']}; border: none;")
         text_box.addWidget(lbl)
+        due_key = task.get("due")
+        if due_key and not is_done:
+            due_text, due_color = self._due_label(due_key, task.get("due_time"))
+            due_lbl = QLabel("📅 期限 " + due_text)
+            due_lbl.setStyleSheet(f"font-size: 11px; font-weight: 700; color: {due_color}; border: none;")
+            text_box.addWidget(due_lbl)
         if is_done and task.get("done_at"):
             date_lbl = QLabel("完了 " + task["done_at"])
             date_lbl.setStyleSheet(f"font-size: 11px; color: {self.colors['text_sub']}; border: none;")
@@ -4024,6 +4236,48 @@ class MultiApp(QMainWindow):
         row_layout.addWidget(self._icon_btn("🗑", self.colors["danger"],
                                             lambda checked=False, idx=index: self.delete_todo(idx), label="削除"))
         return row
+
+    def _on_todo_view_toggled(self, checked):
+        self.todo_by_date = checked
+        self.refresh_todo()
+
+    def _todo_date_header(self, text, color, count):
+        header = QLabel(f"{text}　{count}件")
+        header.setStyleSheet(
+            f"color: {color}; font-size: 13px; font-weight: 800; background: transparent; "
+            f"border: none; border-bottom: 2px solid {self._rgba(color, 0.35)}; padding: 10px 4px 3px 4px;")
+        return header
+
+    def _add_todo_rows_by_date(self, active):
+        # 期限のあるタスクは日付の早い順に日付ごとにまとめ、期限なしは最後にまとめる
+        groups, no_due = {}, []
+        for i, t in active:
+            key = t.get("due")
+            parsed = None
+            if key:
+                try:
+                    y, m, d = (int(v) for v in key.split("-"))
+                    parsed = datetime(y, m, d).date()
+                except ValueError:
+                    parsed = None
+            if parsed is None:
+                no_due.append((i, t))
+            else:
+                groups.setdefault(parsed, (key, []))[1].append((i, t))
+        for parsed in sorted(groups):
+            key, items = groups[parsed]
+            items.sort(key=lambda it: (it[1].get("due_time") is None, it[1].get("due_time") or ""))
+            text, color = self._due_label(key)
+            weekday = "月火水木金土日"[parsed.weekday()]
+            suffix = text[text.index("（"):] if "（" in text else ""
+            self.todo_list_layout.addWidget(self._todo_date_header(
+                f"📅 {parsed.month}/{parsed.day}({weekday}) {suffix}".strip(), color, len(items)))
+            for i, t in items:
+                self.todo_list_layout.addWidget(self._make_todo_row(i, t))
+        if no_due:
+            self.todo_list_layout.addWidget(self._todo_date_header("期限なし", self.colors["text_sub"], len(no_due)))
+            for i, t in no_due:
+                self.todo_list_layout.addWidget(self._make_todo_row(i, t))
 
     def refresh_todo(self):
         while self.todo_list_layout.count():
@@ -4042,8 +4296,11 @@ class MultiApp(QMainWindow):
             empty.setAlignment(Qt.AlignCenter)
             self.todo_list_layout.addWidget(empty)
 
-        for i, task in active:
-            self.todo_list_layout.addWidget(self._make_todo_row(i, task))
+        if self.todo_by_date:
+            self._add_todo_rows_by_date(active)
+        else:
+            for i, task in active:
+                self.todo_list_layout.addWidget(self._make_todo_row(i, task))
 
         if done:
             header = QWidget()
@@ -4193,9 +4450,14 @@ class MultiApp(QMainWindow):
                 key = f"{self.cur_year}-{self.cur_month}-{day}"
                 is_today = (day == today.day and self.cur_month == today.month and self.cur_year == today.year)
                 has_note = key in self.calendar_notes
+                day_todos = self._todos_due_on(key)
+                pending_todos = [t for t in day_todos if not t.get("done")]
 
                 is_sat, is_sun = (c == 5), (c == 6)
-                if has_note:
+                if pending_todos and not has_note:
+                    bg = self._rgba(self.colors["warn"], 0.10)
+                    border = f"1px solid {self._rgba(self.colors['warn'], 0.5)}"
+                elif has_note:
                     bg = self._rgba(self.colors["accent"], 0.09)
                     border = f"1px solid {self._rgba(self.colors['accent'], 0.5)}"
                 elif is_sun:
@@ -4249,9 +4511,25 @@ class MultiApp(QMainWindow):
                     prev.setMaximumHeight(50)
                     prev.setAlignment(Qt.AlignLeft | Qt.AlignTop)
                     prev.setStyleSheet(f"color: {self.colors['accent']}; font-size: 10px; font-weight: 700; border: none; background: transparent;")
-                    cl.addWidget(prev, stretch=1)
-                else:
-                    cl.addStretch()
+                    cl.addWidget(prev)
+
+                if day_todos:
+                    # 期限がこの日のTODOを自動表示（未完了=☐、完了=✓で薄く）。期限切れの未完了は赤
+                    overdue = (datetime(self.cur_year, self.cur_month, day).date() < today.date())
+                    shown = day_todos[:2]
+                    lines = [("✓ " if t.get("done") else "☐ ") + (t["due_time"] + " " if t.get("due_time") else "") + t.get("text", "") for t in shown]
+                    if len(day_todos) > len(shown):
+                        lines.append(f"…ほか{len(day_todos) - len(shown)}件")
+                    todo_color = (self.colors["text_sub"] if not pending_todos
+                                  else (self.colors["danger"] if overdue else self.colors["warn"]))
+                    tlabel = QLabel("\n".join(lines))
+                    tlabel.setWordWrap(True)
+                    tlabel.setMaximumHeight(46)
+                    tlabel.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+                    tlabel.setStyleSheet(f"color: {todo_color}; font-size: 10px; font-weight: 700; border: none; background: transparent;")
+                    cl.addWidget(tlabel)
+
+                cl.addStretch()
                 self.calendar_grid_layout.addWidget(cell, r + 1, c)
 
     def prev_month(self):
@@ -4271,21 +4549,31 @@ class MultiApp(QMainWindow):
         self.draw_calendar()
 
     def open_day_memo(self, day):
-        # メモがあれば「閲覧」画面 → そこから編集/削除。無ければ直接「編集(追加)」画面。
+        # メモかこの日が期限のTODOがあれば「閲覧」画面 → そこから編集/削除。どちらも無ければ直接「編集(追加)」画面。
         key = f"{self.cur_year}-{self.cur_month}-{day}"
         note = self.calendar_notes.get(key, "")
+        day_todos = self._todos_due_on(key)
         title = f"{self.cur_year}年 {self.cur_month}月{day}日"
 
-        if not note:
+        if not note and not day_todos:
             self._edit_day_memo(day)
             return
 
-        viewer = NoteViewDialog(title, note, accent=self.colors["warn"], parent=self)
+        parts = []
+        if note:
+            parts.append(note)
+        if day_todos:
+            todo_lines = [("✓ " if t.get("done") else "☐ ") + (t["due_time"] + "まで " if t.get("due_time") else "") + t.get("text", "") for t in day_todos]
+            parts.append("【この日が期限のTODO】\n" + "\n".join(todo_lines))
+        viewer = NoteViewDialog(title, "\n\n".join(parts), accent=self.colors["warn"], parent=self)
         viewer.exec_()
         if viewer.action == "edit":
             self._edit_day_memo(day)
         elif viewer.action == "delete":
-            if QMessageBox.question(self, "確認", "このメモを削除しますか？",
+            if not note:
+                QMessageBox.information(self, "お知らせ", "この日にはメモがありません。TODOはTODO画面から編集・削除できます。")
+                return
+            if QMessageBox.question(self, "確認", "このメモを削除しますか？\n（期限のTODOは削除されません）",
                                     QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
                 self.calendar_notes.pop(key, None)
                 self.draw_calendar()
@@ -4317,6 +4605,7 @@ class MainWindowContainer(MultiApp):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    load_bundled_fonts()
     icon_path = resource_path("icon.ico")
     if os.path.exists(icon_path):
         app_icon = QIcon(icon_path)

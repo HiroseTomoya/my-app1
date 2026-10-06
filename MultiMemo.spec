@@ -5,7 +5,7 @@ a = Analysis(
     ['多機能メモ.py'],
     pathex=[],
     binaries=[],
-    datas=[('icon.ico', '.'), ('icons', 'icons'), ('assets', 'assets')],
+    datas=[('icon.ico', '.'), ('icons', 'icons'), ('assets', 'assets'), ('fonts', 'fonts')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
