@@ -10,6 +10,7 @@
   let currentStaffName = null;
   let currentStaffRole = null; // '一般' or '管理者'
   let currentStaffDefaultPosition = null;
+  let sessionToken = null; // サーバーが発行するログイン証明。データ取得・保存のたびに送る
   const selectedDates = new Set();
   const shiftRequests = new Map();    // 従業員の希望提出用 (dateStr -> {start, end, memo})
   const confirmedShifts = new Map();  // 個人の確定シフト (dateStr -> {start, end, restTime, position})
@@ -138,12 +139,29 @@
     const savedName = localStorage.getItem('shift_app_staff_name');
     const savedRole = localStorage.getItem('shift_app_staff_role');
     const savedPos  = localStorage.getItem('shift_app_staff_default_position');
-    if (savedId && savedName) {
+    const savedToken = localStorage.getItem('shift_app_token');
+    const isDemo = typeof google === 'undefined';
+    if (savedId && savedName && (savedToken || isDemo)) {
       currentStaffId = savedId;
       currentStaffName = savedName;
       currentStaffRole = savedRole || '一般';
       currentStaffDefaultPosition = savedPos || 'ホール';
+      sessionToken = savedToken;
       finishLogin();
+      // 画面は先に表示し、ログイン状態が有効かどうかは裏でサーバーに確認する
+      if (!isDemo) {
+        google.script.run
+          .withSuccessHandler(res => {
+            if (!res.success) {
+              forceLogout(res.message);
+            } else if (res.staff.role !== currentStaffRole || res.staff.name !== currentStaffName) {
+              // 権限や名前がシート側で変更されていたら反映する
+              setLoginSession(res.staff.id, res.staff.name, res.staff.role, res.staff.defaultPosition, sessionToken, true);
+              finishLogin();
+            }
+          })
+          .verifySession(savedToken);
+      }
     }
     const rememberedId = localStorage.getItem('shift_app_remember_id');
     const rememberedPwd = localStorage.getItem('shift_app_remember_pwd');
@@ -186,7 +204,7 @@
     google.script.run
       .withSuccessHandler(res => {
         if (res.success) {
-          setLoginSession(res.staff.id, res.staff.name, res.staff.role, res.staff.defaultPosition);
+          setLoginSession(res.staff.id, res.staff.name, res.staff.role, res.staff.defaultPosition, res.token);
           finishLogin();
         } else {
           err.textContent = res.message;
@@ -201,15 +219,18 @@
       })
       .authenticateStaff(staffId, pwdHash);
   }
-  function setLoginSession(id, name, role, pos) {
+  function setLoginSession(id, name, role, pos, token, keepRemembered) {
     currentStaffId = id;
     currentStaffName = name;
     currentStaffRole = role;
     currentStaffDefaultPosition = pos;
+    sessionToken = token || null;
     localStorage.setItem('shift_app_staff_id', id);
     localStorage.setItem('shift_app_staff_name', name);
     localStorage.setItem('shift_app_staff_role', role);
     localStorage.setItem('shift_app_staff_default_position', pos);
+    if (token) localStorage.setItem('shift_app_token', token);
+    if (keepRemembered) return;
     const remember = document.getElementById('login-remember');
     if (remember && remember.checked) {
       localStorage.setItem('shift_app_remember_id', document.getElementById('login-staff-id').value.trim());
@@ -222,7 +243,18 @@
   function logout() {
     if (hasUnsavedChanges && !confirm('未保存の変更があります。ログアウトしますか？')) return;
     if (!hasUnsavedChanges && !confirm('ログアウトしますか？')) return;
+    clearLoginSession();
+  }
+  // ログイン状態が無効になったとき (期限切れ・パスワード変更など) に確認なしでログイン画面へ戻す
+  function forceLogout(message) {
+    clearLoginSession();
+    document.getElementById('login-error').textContent = message || '';
+  }
+  function clearLoginSession() {
     hasUnsavedChanges = false;
+    sessionToken = null;
+    Object.keys(_dataCache).forEach(k => _dataCache[k] = {});
+    localStorage.removeItem('shift_app_token');
     localStorage.removeItem('shift_app_staff_id');
     localStorage.removeItem('shift_app_staff_name');
     localStorage.removeItem('shift_app_staff_role');
@@ -262,23 +294,23 @@
     const months = [thisMonth, nextMonth];
     months.forEach(m => {
       if (!_dataCache.submit[m]) {
-        google.script.run.withSuccessHandler(r => { _dataCache.submit[m] = r; }).getSavedShiftRequests(currentStaffId, m);
+        google.script.run.withSuccessHandler(r => { _dataCache.submit[m] = r; }).getSavedShiftRequests(sessionToken, m);
       }
       if (!_dataCache.view[m]) {
         google.script.run.withSuccessHandler(r => {
           if (!_dataCache.view[m]) _dataCache.view[m] = { req: {}, conf: {} };
           _dataCache.view[m].req = r;
-        }).getSavedShiftRequests(currentStaffId, m);
+        }).getSavedShiftRequests(sessionToken, m);
         google.script.run.withSuccessHandler(r => {
           if (!_dataCache.view[m]) _dataCache.view[m] = { req: {}, conf: {} };
           _dataCache.view[m].conf = r;
-        }).getConfirmedShifts(currentStaffId, m);
+        }).getConfirmedShifts(sessionToken, m);
       }
       if (!_dataCache.allshift[m]) {
-        google.script.run.withSuccessHandler(r => { _dataCache.allshift[m] = r; }).getMonthlyConfirmedShifts(m);
+        google.script.run.withSuccessHandler(r => { _dataCache.allshift[m] = r; }).getMonthlyConfirmedShifts(sessionToken, m);
       }
       if (currentStaffRole === '管理者' && !_dataCache.admin[m]) {
-        google.script.run.withSuccessHandler(r => { _dataCache.admin[m] = r; }).getAdminDesiredShifts(m);
+        google.script.run.withSuccessHandler(r => { _dataCache.admin[m] = r; }).getAdminDesiredShifts(sessionToken, m);
       }
     });
   }
@@ -840,7 +872,7 @@
         if (doneCallback) doneCallback();
       })
       .withFailureHandler(() => { setLoadingState(false); if (doneCallback) doneCallback(); })
-      .getSavedShiftRequests(currentStaffId, targetMonth);
+      .getSavedShiftRequests(sessionToken, targetMonth);
   }
   function toggleInputSection() {
     const section = document.getElementById('input-section');
@@ -988,7 +1020,6 @@
     if (!currentStaffId) { showToast('ログインしていません。', 'error'); return; }
     const targetMonth = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     const payload = {
-      staffId: currentStaffId,
       targetMonth: targetMonth,
       shifts: Array.from(shiftRequests.entries()).map(([date, data]) => ({ date, ...data }))
     };
@@ -1024,7 +1055,7 @@
         btnSave.innerHTML = origHtml;
         btnSave.disabled = false;
       })
-      .submitShiftRequests(payload);
+      .submitShiftRequests(sessionToken, payload);
   }
   // =========================================
   // 従業員用：確定シフト・マイシフト詳細
@@ -1071,11 +1102,11 @@
     google.script.run
       .withSuccessHandler(r => { reqRes = r; reqDone = true; tryFinish(); })
       .withFailureHandler(() => { reqDone = true; tryFinish(); })
-      .getSavedShiftRequests(currentStaffId, targetMonth);
+      .getSavedShiftRequests(sessionToken, targetMonth);
     google.script.run
       .withSuccessHandler(r => { confRes = r; confDone = true; tryFinish(); })
       .withFailureHandler(() => { confDone = true; tryFinish(); })
-      .getConfirmedShifts(currentStaffId, targetMonth);
+      .getConfirmedShifts(sessionToken, targetMonth);
   }
   function buildDetailCardHtml(shift, isConfirmed) {
     let workMinText = '';
@@ -1259,7 +1290,7 @@
         if (doneCallback) doneCallback();
       })
       .withFailureHandler(e => { setLoadingState(false); showToast('全体シフトの読み込みに失敗しました: ' + (e && e.message || e), 'error'); if (doneCallback) doneCallback(); })
-      .getMonthlyConfirmedShifts(targetMonth);
+      .getMonthlyConfirmedShifts(sessionToken, targetMonth);
   }
   // 同日出勤メンバーモーダル
   function openCoworkersModal(dateStr) {
@@ -1293,7 +1324,7 @@
         loading.style.display = 'none';
         document.getElementById('coworkers-list').innerHTML = '<p style="text-align:center; padding:2rem; color:var(--c-text-muted);">読み込みに失敗しました。</p>';
       })
-      .getDailyConfirmedShifts(dateStr);
+      .getDailyConfirmedShifts(sessionToken, dateStr);
   }
   function renderCoworkers(workers) {
     const list = document.getElementById('coworkers-list');
@@ -1394,7 +1425,7 @@
         if (doneCallback) doneCallback();
       })
       .withFailureHandler(e => { setLoadingState(false); showToast('シフト編集データの読み込みに失敗しました: ' + (e && e.message || e), 'error'); if (doneCallback) doneCallback(); })
-      .getAdminDesiredShifts(targetMonth);
+      .getAdminDesiredShifts(sessionToken, targetMonth);
   }
   function showAdminDailyPanel(day, dateStr) {
     selectedAdminDate = dateStr;
@@ -1592,7 +1623,7 @@
         btnSave.innerHTML = origHtml;
         btnSave.disabled = false;
       })
-      .saveConfirmedShifts(payload);
+      .saveConfirmedShifts(sessionToken, payload);
   }
   // =========================================
   // 管理者：未提出者一覧

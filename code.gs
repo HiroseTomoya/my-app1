@@ -37,15 +37,16 @@ function _formatTimeStr(val) {
 
 /**
  * 従業員一覧を `Users` シートから取得
+ * ※ 関数名の末尾が「_」のものは google.script.run から呼び出せない（サーバー内部専用）
  */
-function getStaffList() {
+function getStaffList_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Users');
   if (!sheet) return [];
-  
+
   const data = sheet.getDataRange().getValues();
   const staffList = [];
-  
+
   // A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition
   for (let i = 1; i < data.length; i++) {
     if (data[i][0]) {
@@ -61,139 +62,283 @@ function getStaffList() {
 }
 
 /**
+ * ユーティリティ: バイト配列を16進数文字列に変換する
+ */
+function bytesToHex_(bytes) {
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    let v = bytes[i];
+    if (v < 0) v += 256;
+    hex += (v < 16 ? '0' : '') + v.toString(16);
+  }
+  return hex;
+}
+
+/**
  * ユーティリティ: 文字列を SHA-256 ハッシュ（16進数文字列）に変換する
  */
 function _computeSha256(str) {
-  const rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, str);
-  let hexHash = '';
-  for (let i = 0; i < rawHash.length; i++) {
-    let hashVal = rawHash[i];
-    if (hashVal < 0) hashVal += 256;
-    let hexString = hashVal.toString(16);
-    if (hexString.length === 1) hexString = '0' + hexString;
-    hexHash += hexString;
+  return bytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, str, Utilities.Charset.UTF_8));
+}
+
+// =========================================
+// 認証・セッション
+// =========================================
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // ログイン状態の有効期間 (30日)
+const LOGIN_MAX_FAILURES = 5;                    // この回数連続で失敗するとロック
+const LOGIN_LOCK_SECONDS = 10 * 60;              // ロック時間 (10分)
+const ADMIN_ROLE = '管理者';
+const MSG_LOGIN_FAILED = 'ユーザーIDまたはパスワードが正しくありません。';
+const MSG_SESSION_INVALID = 'ログインの有効期限が切れました。もう一度ログインしてください。';
+
+/**
+ * ユーザーを1件検索する。見つからなければ null。
+ * `Users` シートがない場合は古い「従業員マスター」シートを参照する互換性対応。
+ */
+function findUser_(staffId) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const target = String(staffId).trim();
+  if (!target) return null;
+
+  // Users: A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition
+  let sheet = ss.getSheetByName('Users');
+  let col = { pwd: 1, name: 2, role: 3, pos: 4 };
+  if (!sheet) {
+    // 従業員マスター: A:ID, B:Name, C:Position, D:Password (権限カラムがないため全員一般扱い)
+    sheet = ss.getSheetByName('従業員マスター');
+    col = { pwd: 3, name: 1, role: -1, pos: 2 };
   }
-  return hexHash;
+  if (!sheet) return null;
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === target) {
+      return {
+        id: target,
+        name: String(data[i][col.name]),
+        role: col.role >= 0 ? String(data[i][col.role]) : '一般',
+        defaultPosition: String(data[i][col.pos] || 'ホール'),
+        stored: String(data[i][col.pwd] || '').trim(),
+        sheet: sheet,
+        row: i + 1,
+        pwdCol: col.pwd + 1
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * パスワード照合。
+ * シートの値は次の3形式を受け付ける:
+ *   - 's1$<ソルト>$<ハッシュ>' … ソルト付き (ログイン成功時に自動でこの形式へ変換される)
+ *   - SHA-256 ハッシュ (旧形式)
+ *   - 「1234」のような平文 (管理者がシートに直接入力した直後)
+ */
+function checkPassword_(stored, passwordHash) {
+  if (!stored || !passwordHash) return { ok: false, legacy: false };
+  if (stored.indexOf('s1$') === 0) {
+    const parts = stored.split('$');
+    return { ok: parts.length === 3 && _computeSha256(parts[1] + passwordHash) === parts[2], legacy: false };
+  }
+  return { ok: stored === passwordHash || _computeSha256(stored) === passwordHash, legacy: true };
+}
+
+function makeSaltedPassword_(passwordHash) {
+  const salt = Utilities.getUuid().replace(/-/g, '');
+  return 's1$' + salt + '$' + _computeSha256(salt + passwordHash);
+}
+
+/**
+ * トークン署名用の秘密鍵 (スクリプトプロパティに自動生成して保存)
+ */
+function getSessionSecret_() {
+  const props = PropertiesService.getScriptProperties();
+  let secret = props.getProperty('SESSION_SECRET');
+  if (!secret) {
+    secret = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty('SESSION_SECRET', secret);
+  }
+  return secret;
+}
+
+function signSession_(body, user) {
+  // パスワード欄の値も署名に含めることで、パスワード変更時に既存のログイン状態を無効化する
+  return bytesToHex_(Utilities.computeHmacSha256Signature(body + '.' + user.stored, getSessionSecret_()));
+}
+
+function issueSessionToken_(user) {
+  const body = Utilities.base64EncodeWebSafe(user.id, Utilities.Charset.UTF_8) + '.' + (Date.now() + SESSION_TTL_MS);
+  return body + '.' + signSession_(body, user);
+}
+
+/**
+ * トークンを検証してログイン中のユーザーを返す。無効な場合は例外を投げる。
+ * データを読み書きする公開関数は、必ず最初にこれを呼ぶこと。
+ */
+function requireSession_(token, adminOnly) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3 || !(Number(parts[1]) > Date.now())) throw new Error(MSG_SESSION_INVALID);
+
+  let user = null;
+  try {
+    user = findUser_(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString());
+  } catch (e) {}
+  if (!user || signSession_(parts[0] + '.' + parts[1], user) !== parts[2]) throw new Error(MSG_SESSION_INVALID);
+
+  if (adminOnly && user.role !== ADMIN_ROLE) throw new Error('この操作を行う権限がありません。');
+  return user;
+}
+
+/**
+ * 書き込み処理を排他制御つきで実行する (同時保存によるデータ消失を防ぐ)
+ */
+function withLock_(fn) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (e) {
+    return { success: false, message: '他の人が保存中です。少し待ってからもう一度お試しください。' };
+  }
+  try {
+    const res = fn();
+    SpreadsheetApp.flush();
+    return res;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
  * スタッフの認証（ログイン）
  * passwordHash はフロントエンド側で SHA-256 ハッシュ化された文字列
+ * 成功時は以降の通信に必要なセッショントークンを返す
  */
 function authenticateStaff(staffId, passwordHash) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('Users');
-  
-  // 新しい Users シートがない場合は、古い「従業員マスター」シートを参照する互換性対応
-  if (!sheet) {
-    sheet = ss.getSheetByName('従業員マスター');
-    if (!sheet) return { success: false, message: 'ユーザーマスターが存在しません。初期セットアップを実行してください。' };
-    
-    const data = sheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      const id = String(data[i][0]).trim();
-      if (id === String(staffId).trim()) {
-        const storedVal = String(data[i][3] || '').trim(); // D列: パスワード
-        const computedHash = _computeSha256(storedVal);
-        
-        // シート側が平文またはハッシュどちらでも一致するようにする
-        if (storedVal === passwordHash || computedHash === passwordHash) {
-          return {
-            success: true,
-            staff: {
-              id: id,
-              name: String(data[i][1]),
-              role: '一般', // 古いシートには権限カラムがないため一般扱い
-              defaultPosition: String(data[i][2] || 'ホール')
-            }
-          };
-        } else {
-          return { success: false, message: 'パスワードが間違っています。' };
-        }
-      }
-    }
-    return { success: false, message: 'ユーザーが見つかりません。' };
+  if (!ss.getSheetByName('Users') && !ss.getSheetByName('従業員マスター')) {
+    return { success: false, message: 'ユーザーマスターが存在しません。初期セットアップを実行してください。' };
   }
-  
-  // 新しい Users シートでの処理
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][0]).trim();
-    if (id === String(staffId).trim()) {
-      const storedVal = String(data[i][1] || '').trim(); // B列: パスワード
-      const computedHash = _computeSha256(storedVal);
-      
-      // シート側に「1234」のような平文が書かれていても、
-      // GAS側でハッシュ化して画面側から送られてきたハッシュと一致するか判定する
-      if (storedVal === passwordHash || computedHash === passwordHash) {
-        return {
-          success: true,
-          staff: {
-            id: id,
-            name: String(data[i][2]),
-            role: String(data[i][3]),
-            defaultPosition: String(data[i][4] || 'ホール')
-          }
-        };
-      } else {
-        return { success: false, message: 'パスワードが間違っています。' };
-      }
-    }
+
+  // 総当たり対策: 同じIDで連続して失敗したら一定時間ロックする
+  const cache = CacheService.getScriptCache();
+  const failKey = 'login_fail_' + _computeSha256(String(staffId).trim());
+  const failures = Number(cache.get(failKey) || 0);
+  if (failures >= LOGIN_MAX_FAILURES) {
+    return { success: false, message: 'ログインの失敗が続いたため一時的にロックしています。10分ほど待ってからお試しください。' };
   }
-  return { success: false, message: 'ユーザーが見つかりません。' };
+
+  const user = findUser_(staffId);
+  const check = user ? checkPassword_(user.stored, String(passwordHash || '')) : { ok: false };
+  if (!check.ok) {
+    cache.put(failKey, String(failures + 1), LOGIN_LOCK_SECONDS);
+    return { success: false, message: MSG_LOGIN_FAILED };
+  }
+  cache.remove(failKey);
+
+  // 平文・旧形式のパスワードはソルト付きハッシュに置き換える
+  if (check.legacy) {
+    user.stored = makeSaltedPassword_(String(passwordHash));
+    user.sheet.getRange(user.row, user.pwdCol).setValue(user.stored);
+  }
+
+  return {
+    success: true,
+    token: issueSessionToken_(user),
+    staff: { id: user.id, name: user.name, role: user.role, defaultPosition: user.defaultPosition }
+  };
+}
+
+/**
+ * 保存済みのログイン状態が有効か確認する (自動ログイン用)
+ * 権限などはシートの最新の値を返す
+ */
+function verifySession(token) {
+  try {
+    const user = requireSession_(token);
+    return { success: true, staff: { id: user.id, name: user.name, role: user.role, defaultPosition: user.defaultPosition } };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * ユーティリティ: 「=」などで始まる入力が数式として実行されないよう文字列として保存する
+ */
+function asText_(val, maxLength) {
+  const str = String(val == null ? '' : val).slice(0, maxLength || 200);
+  return str === '' ? '' : "'" + str;
 }
 
 /**
  * シフト希望データの保存 (`Desired_Shifts` シート)
  */
-function submitShiftRequests(payload) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('Desired_Shifts');
-  if (!sheet) {
-    sheet = ss.insertSheet('Desired_Shifts');
-    sheet.appendRow(['UserID', 'Date', 'StartTime', 'EndTime', 'Memo', 'Timestamp']);
-  }
-  
-  const data = sheet.getDataRange().getValues();
-  const staffId = String(payload.staffId);
-  const targetMonth = payload.targetMonth; // YYYY-MM
+function submitShiftRequests(token, payload) {
+  const user = requireSession_(token);
+  // 他人の希望を書き換えられないよう、対象スタッフは必ずログイン情報から決める
+  const staffId = user.id;
+  const targetMonth = String((payload && payload.targetMonth) || ''); // YYYY-MM
+  const shifts = (payload && Array.isArray(payload.shifts)) ? payload.shifts : [];
 
-  // 重複を防ぐため、同スタッフ・同月の既存データを一括削除
-  const rowsToDelete = [];
-  for (let i = data.length - 1; i > 0; i--) {
-    const sId = String(data[i][0]);
-    const dStr = _formatDateStr(data[i][1]);
-    if (sId === staffId && dStr.startsWith(targetMonth)) {
-      rowsToDelete.push(i + 1);
+  if (!/^\d{4}-\d{2}$/.test(targetMonth)) {
+    return { success: false, message: '対象月が正しくありません。' };
+  }
+  const timePattern = /^(\d{1,2}:\d{2}|フリー)?$/;
+  const byDate = {};
+  for (let i = 0; i < shifts.length; i++) {
+    const shift = shifts[i] || {};
+    const date = String(shift.date || '');
+    const start = String(shift.start || '');
+    const end = String(shift.end || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date.indexOf(targetMonth) !== 0 || !start || !timePattern.test(start) || !timePattern.test(end)) {
+      return { success: false, message: 'シフト希望の内容が正しくありません。画面を再読み込みしてください。' };
     }
+    byDate[date] = { start: start, end: end, memo: shift.memo };
   }
-  if (rowsToDelete.length > 0) {
-    rowsToDelete.sort((a, b) => b - a);
-    rowsToDelete.forEach(r => sheet.deleteRow(r));
-  }
-  SpreadsheetApp.flush();
 
-  const timestamp = new Date();
-  const rows = payload.shifts.map(shift => [
-    staffId,
-    "'" + shift.date,
-    "'" + shift.start,
-    "'" + shift.end,
-    shift.memo || '',
-    timestamp
-  ]);
-  
-  if (rows.length > 0) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
-  }
-  
-  return { success: true };
+  return withLock_(() => {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('Desired_Shifts');
+    if (!sheet) {
+      sheet = ss.insertSheet('Desired_Shifts');
+      sheet.appendRow(['UserID', 'Date', 'StartTime', 'EndTime', 'Memo', 'Timestamp']);
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    // 重複を防ぐため、同スタッフ・同月の既存データを一括削除 (下の行から消す)
+    for (let i = data.length - 1; i > 0; i--) {
+      const sId = String(data[i][0]);
+      const dStr = _formatDateStr(data[i][1]);
+      if (sId === staffId && dStr.startsWith(targetMonth)) {
+        sheet.deleteRow(i + 1);
+      }
+    }
+    SpreadsheetApp.flush();
+
+    const timestamp = new Date();
+    const rows = Object.keys(byDate).sort().map(date => [
+      staffId,
+      "'" + date,
+      "'" + byDate[date].start,
+      "'" + byDate[date].end,
+      asText_(byDate[date].memo),
+      timestamp
+    ]);
+
+    if (rows.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+    }
+
+    return { success: true };
+  });
 }
 
 /**
  * 個人の保存済みシフト希望を取得 (提出画面用)
  */
-function getSavedShiftRequests(staffId, targetMonth) {
+function getSavedShiftRequests(token, targetMonth) {
+  const staffId = requireSession_(token).id;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Desired_Shifts');
   if (!sheet) return {};
@@ -219,7 +364,8 @@ function getSavedShiftRequests(staffId, targetMonth) {
  * 指定月の個人の確定シフトを取得 (マイシフト用)
  * `Confirmed_Shifts` シートから取得
  */
-function getConfirmedShifts(staffId, targetMonth) {
+function getConfirmedShifts(token, targetMonth) {
+  const staffId = requireSession_(token).id;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Confirmed_Shifts');
   if (!sheet) return {};
@@ -246,7 +392,8 @@ function getConfirmedShifts(staffId, targetMonth) {
  * 指定日の全員の確定シフトを取得 (全体シフト・出勤メンバー確認用)
  * `Confirmed_Shifts` からその日のシフト一覧を取得し、`Users` と結合してスタッフ名・デフォルト情報を補完
  */
-function getDailyConfirmedShifts(dateStr) {
+function getDailyConfirmedShifts(token, dateStr) {
+  requireSession_(token);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // ユーザーマッピング作成
@@ -291,7 +438,8 @@ function getDailyConfirmedShifts(dateStr) {
 /**
  * 指定月全体の全員の確定シフトを取得 (カレンダー全体表示用)
  */
-function getMonthlyConfirmedShifts(targetMonth) {
+function getMonthlyConfirmedShifts(token, targetMonth) {
+  requireSession_(token);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // ユーザーマップ
@@ -355,9 +503,10 @@ function getHolidays(year, month) {
 /**
  * 管理者: 対象月・期間の全希望状況を取得
  */
-function getAdminDesiredShifts(targetMonth) {
+function getAdminDesiredShifts(token, targetMonth) {
+  requireSession_(token, true);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const staffList = getStaffList();
+  const staffList = getStaffList_();
   
   // 希望データを読み込む
   const reqSheet = ss.getSheetByName('Desired_Shifts');
@@ -426,10 +575,18 @@ function getAdminDesiredShifts(targetMonth) {
 /**
  * 管理者: 確定シフトの保存 (`Confirmed_Shifts` シートへの書き込み)
  */
-function saveConfirmedShifts(payload) {
+function saveConfirmedShifts(token, payload) {
+  requireSession_(token, true);
   if (!payload || !payload.data || payload.data.length === 0) {
     return { success: false, message: 'スタッフデータが空です。画面を再読み込みしてください。' };
   }
+  if (!/^\d{4}-\d{2}$/.test(String(payload.targetMonth || ''))) {
+    return { success: false, message: '対象月が正しくありません。' };
+  }
+  return withLock_(() => saveConfirmedShiftsLocked_(payload));
+}
+
+function saveConfirmedShiftsLocked_(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Confirmed_Shifts');
   const headerRow = ['Date', 'UserID', 'StartTime', 'EndTime', 'RestTime', 'Position'];
@@ -507,6 +664,16 @@ function saveConfirmedShifts(payload) {
  * 【便利ツール】スプレッドシートの初期セットアップ（初回のみ実行）
  */
 function setupSpreadsheet() {
+  // getUi() はスプレッドシートのメニューから実行したときだけ使える。
+  // Webアプリ経由 (google.script.run) ではここで例外になるため、外部から初期化される事故を防げる。
+  const ui = SpreadsheetApp.getUi();
+  const answer = ui.alert(
+    'データベース初期化',
+    'ユーザー・希望シフト・確定シフトをすべて消去して初期状態に戻します。よろしいですか？',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (answer !== ui.Button.OK) return;
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // 1. Users シート
@@ -515,10 +682,12 @@ function setupSpreadsheet() {
   if (!userSheet) userSheet = ss.insertSheet('Users');
   userSheet.clear();
   userSheet.appendRow(['ID', 'PasswordHash', 'Name', 'Role', 'DefaultPosition']);
-  // 初期テストデータ (パスワードはすべて一般が「1234」、管理者が「9999」)
+  // 初期テストデータ (パスワードは一般が「1234」、管理者が「test」)
+  // ※ 本番で使う前に必ず変更すること。B列に新しいパスワードをそのまま入力すれば、
+  //    次回ログイン時に自動でソルト付きハッシュへ置き換わる。
   // SHA-256 ハッシュ:
   // "1234" -> "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
-  // "9999" -> "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  // "test" -> "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
   userSheet.appendRow(['001', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', '山田 太郎', '一般', 'キッチン']);
   userSheet.appendRow(['002', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', '佐藤 花子', '一般', 'ホール']);
   userSheet.appendRow(['003', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', '鈴木 一郎', '一般', 'リーダー']);
