@@ -1,3 +1,11 @@
+/**
+ * @OnlyCurrentDoc
+ *
+ * ↑ この指定により、このスクリプトが触れるのは「このスプレッドシート1つだけ」になる。
+ *   導入先のGoogleアカウントにある他のファイルには一切アクセスできない。消さないこと。
+ *   同じ理由で、カレンダーやメールなど他のGoogleサービスも使わない (祝日はスクリプト内で計算する)。
+ */
+
 function doGet(e) {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
@@ -528,24 +536,79 @@ function getMonthlyConfirmedShifts(token, targetMonth) {
 }
 
 /**
- * Googleカレンダーから祝日を取得する
+ * 指定した年の日本の祝日を計算して返す ({ 'YYYY-MM-DD': '祝日名' })
+ * 2020年以降の「国民の祝日に関する法律」に基づく。法改正や特例で祝日が動いた年は、ここを直す必要がある。
+ * 春分の日・秋分の日は近似式による計算 (2099年まで有効)。
+ */
+function japaneseHolidays_(year) {
+  const pad = n => String(n).padStart(2, '0');
+  const key = (m, d) => `${year}-${pad(m)}-${pad(d)}`;
+  // その月の第n月曜日の日付
+  const nthMonday = (m, n) => {
+    const firstDow = new Date(year, m - 1, 1).getDay();
+    return 1 + ((8 - firstDow) % 7) + (n - 1) * 7;
+  };
+  const leap = Math.floor((year - 1980) / 4);
+  const springEquinox = Math.floor(20.8431 + 0.242194 * (year - 1980) - leap);
+  const autumnEquinox = Math.floor(23.2488 + 0.242194 * (year - 1980) - leap);
+
+  const holidays = {};
+  holidays[key(1, 1)] = '元日';
+  holidays[key(1, nthMonday(1, 2))] = '成人の日';
+  holidays[key(2, 11)] = '建国記念の日';
+  holidays[key(2, 23)] = '天皇誕生日';
+  holidays[key(3, springEquinox)] = '春分の日';
+  holidays[key(4, 29)] = '昭和の日';
+  holidays[key(5, 3)] = '憲法記念日';
+  holidays[key(5, 4)] = 'みどりの日';
+  holidays[key(5, 5)] = 'こどもの日';
+  holidays[key(7, nthMonday(7, 3))] = '海の日';
+  holidays[key(8, 11)] = '山の日';
+  holidays[key(9, nthMonday(9, 3))] = '敬老の日';
+  holidays[key(9, autumnEquinox)] = '秋分の日';
+  holidays[key(10, nthMonday(10, 2))] = 'スポーツの日';
+  holidays[key(11, 3)] = '文化の日';
+  holidays[key(11, 23)] = '勤労感謝の日';
+
+  const toKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const base = Object.keys(holidays).sort();
+
+  // 振替休日: 祝日が日曜なら、その後の最初の「祝日でない日」が休みになる
+  base.forEach(k => {
+    const p = k.split('-').map(Number);
+    const date = new Date(p[0], p[1] - 1, p[2]);
+    if (date.getDay() !== 0) return;
+    do { date.setDate(date.getDate() + 1); } while (holidays[toKey(date)]);
+    holidays[toKey(date)] = '振替休日';
+  });
+
+  // 国民の休日: 前日と翌日がどちらも祝日の平日 (敬老の日と秋分の日に挟まれた日など)
+  base.forEach(k => {
+    const p = k.split('-').map(Number);
+    const between = new Date(p[0], p[1] - 1, p[2] + 1);
+    const after = new Date(p[0], p[1] - 1, p[2] + 2);
+    if (!holidays[toKey(between)] && base.indexOf(toKey(after)) >= 0 && between.getDay() !== 0) {
+      holidays[toKey(between)] = '国民の休日';
+    }
+  });
+
+  return holidays;
+}
+
+/**
+ * 指定した年月の祝日を取得する
  */
 function getHolidays(year, month) {
-  const holidays = {};
-  try {
-    const calendar = CalendarApp.getCalendarById('ja.japanese#holiday@group.v.calendar.google.com');
-    if (!calendar) return holidays;
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 1); // 翌月の1日まで
-    const events = calendar.getEvents(startDate, endDate);
-    events.forEach(e => {
-      const dStr = _formatDateStr(e.getStartTime());
-      holidays[dStr] = e.getTitle();
-    });
-  } catch (e) {
-    console.warn('Google Calendar祝日取得エラー: ' + e.message);
-  }
-  return holidays;
+  year = Number(year);
+  month = Number(month);
+  if (!(year >= 2000 && year <= 2099) || !(month >= 1 && month <= 12)) return {};
+  const all = japaneseHolidays_(year);
+  const prefix = `${year}-${String(month).padStart(2, '0')}-`;
+  const result = {};
+  Object.keys(all).forEach(k => {
+    if (k.indexOf(prefix) === 0) result[k] = all[k];
+  });
+  return result;
 }
 
 /**
