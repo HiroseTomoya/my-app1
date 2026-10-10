@@ -161,6 +161,75 @@
         </div>
       </div>
     </div>
+    <!-- ===== 管理者: スタッフ追加・編集モーダル ===== -->
+    <div id="staff-edit-modal" class="modal-overlay" onclick="if(event.target===this) closeStaffModal()">
+      <div class="modal-content" style="max-width: 420px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem;">
+          <h3 id="staff-edit-title" style="margin:0; font-weight:800; font-size:1.1rem;">スタッフを追加</h3>
+          <button class="btn-remove" onclick="closeStaffModal()" style="padding:0.4rem;">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="form-group">
+          <label>名前</label>
+          <input type="text" id="staff-edit-name" maxlength="30" placeholder="例: 山田 太郎">
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label>ポジション</label>
+            <select id="staff-edit-position">
+              <option value="ホール">ホール</option>
+              <option value="キッチン">キッチン</option>
+              <option value="リーダー">リーダー</option>
+              <option value="社員">社員</option>
+            </select>
+          </div>
+          <div class="form-group half">
+            <label>権限</label>
+            <select id="staff-edit-role">
+              <option value="一般">一般</option>
+              <option value="管理者">管理者（シフトを作る人）</option>
+            </select>
+          </div>
+        </div>
+        <p id="staff-edit-note" class="staff-note">ログインIDと初期パスワードは、追加したときに自動で発行されます。</p>
+        <div id="staff-edit-error" class="staff-error"></div>
+        <button class="btn-add" id="staff-edit-save" style="width:100%;" onclick="saveStaffModal()">
+          <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">check</span>
+          <span id="staff-edit-save-label">追加する</span>
+        </button>
+        <div id="staff-edit-extra" style="display:none; gap:0.75rem; margin-top:0.75rem;">
+          <button class="btn-secondary" style="flex:1;" onclick="resetStaffPasswordFromModal()">
+            <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">key</span>
+            パスワード再発行
+          </button>
+          <button class="btn-secondary" id="staff-edit-retire" style="flex:1;" onclick="toggleStaffRetiredFromModal()">退職にする</button>
+        </div>
+      </div>
+    </div>
+    <!-- ===== 管理者: ID・パスワード表示モーダル ===== -->
+    <div id="staff-credential-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width: 400px;">
+        <h3 id="staff-credential-title" style="margin:0 0 0.75rem; font-weight:800; font-size:1.1rem;">スタッフを追加しました</h3>
+        <p class="staff-note" style="margin-top:0;">次の内容を、本人にだけ伝えてください。</p>
+        <div class="credential-box">
+          <div><span>名前</span><b id="staff-credential-name"></b></div>
+          <div><span>ログインID</span><b id="staff-credential-id"></b></div>
+          <div><span>パスワード</span><b id="staff-credential-password"></b></div>
+        </div>
+        <p class="staff-warning">
+          <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">warning</span>
+          パスワードは今しか表示されません。閉じる前に控えてください。
+        </p>
+        <div style="display:flex; gap:0.75rem;">
+          <button class="btn-secondary" style="flex:1;" onclick="copyStaffCredential()">
+            <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">content_copy</span>
+            コピー
+          </button>
+          <button class="btn-add" style="flex:1;" onclick="closeStaffCredentialModal()">控えました</button>
+        </div>
+      </div>
+    </div>
     <!-- ===== 月選択モーダル ===== -->
     <div id="month-picker-modal" class="modal-overlay" onclick="if(event.target===this) closeMonthPicker()">
       <div class="modal-content" style="max-width: 340px;">
@@ -202,6 +271,7 @@
             <li id="nav-submit-li"><a href="javascript:void(0)" id="nav-submit" onclick="switchMode('submit'); return false;"><span class="material-symbols-outlined">edit_calendar</span>シフト希望提出</a></li>
             <li class="nav-section-title" id="nav-section-admin" style="display:none;">管理メニュー</li>
             <li id="nav-admin-li" style="display:none;"><a href="javascript:void(0)" id="nav-admin" onclick="switchMode('admin'); return false;"><span class="material-symbols-outlined">admin_panel_settings</span>シフト作成・編集</a></li>
+            <li id="nav-staff-li" style="display:none;"><a href="javascript:void(0)" id="nav-staff" onclick="switchMode('staff'); return false;"><span class="material-symbols-outlined">manage_accounts</span>スタッフ管理</a></li>
           </ul>
         </nav>
         
@@ -298,6 +368,23 @@
               <div class="day-name text-blue" style="color:var(--c-blue);">土</div>
             </div>
             <div id="calendar-body" class="calendar-body-grid"></div>
+          </div>
+        </div>
+        <!-- 管理者: スタッフ管理 -->
+        <div class="calendar-card" id="staff-area" style="display:none;">
+          <div class="staff-toolbar">
+            <div id="staff-count" class="staff-count"></div>
+            <label class="staff-retired-toggle">
+              <input type="checkbox" id="staff-show-retired" onchange="renderStaffAdminList()">
+              退職者も表示
+            </label>
+            <button class="btn-add staff-add-btn" onclick="openStaffModal(null)">
+              <span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle;">person_add</span>
+              スタッフを追加
+            </button>
+          </div>
+          <div id="staff-list" class="staff-list">
+            <div class="empty-msg">読み込み中...</div>
           </div>
         </div>
         <!-- 管理者: 日付ごとの希望者/確定者詳細表示パネル -->

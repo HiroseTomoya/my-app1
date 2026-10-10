@@ -878,4 +878,44 @@
     #btn-temp-save .material-symbols-outlined { font-size: 0.8rem; }
     .btn-temp-save.mobile-only { display: none !important; }
   }
+  /* Staff management */
+  .staff-toolbar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .staff-count { font-weight: 800; font-size: 0.95rem; margin-right: auto; }
+  .staff-retired-toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 700; color: var(--c-text-muted); cursor: pointer; }
+  .staff-retired-toggle input { width: auto; transform: scale(1.15); cursor: pointer; }
+  .staff-add-btn { width: auto; padding-left: 1.25rem; padding-right: 1.25rem; }
+  .staff-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .staff-row {
+    display: flex; align-items: center; gap: 0.75rem; width: 100%; text-align: left; font: inherit; color: inherit;
+    padding: 0.75rem 1rem; background: white; border: 1px solid var(--c-border); border-radius: var(--radius-md);
+    cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .staff-row:hover { border-color: hsl(235, 60%, 80%); box-shadow: var(--shadow-md); }
+  .staff-row .staff-avatar {
+    flex: none; width: 2.25rem; height: 2.25rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: white; background: linear-gradient(135deg, var(--c-primary), hsl(270, 80%, 60%));
+  }
+  .staff-row .staff-main { flex: 1; min-width: 0; }
+  .staff-row .staff-name { font-weight: 800; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .staff-row .staff-id { font-size: 0.75rem; color: var(--c-text-muted); }
+  .staff-row .staff-tags { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+  .staff-tag { font-size: 0.7rem; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid transparent; }
+  .staff-tag.admin { background: var(--c-primary-light); color: var(--c-primary); border-color: hsl(235, 80%, 88%); }
+  .staff-tag.retired { background: hsl(220, 15%, 93%); color: var(--c-text-muted); }
+  .staff-row.retired { background: hsl(220, 20%, 97%); }
+  .staff-row.retired .staff-avatar { background: hsl(220, 12%, 75%); }
+  .staff-row.retired .staff-name { color: var(--c-text-muted); }
+  .staff-note { font-size: 0.8rem; color: var(--c-text-muted); line-height: 1.6; margin: 0 0 1rem; }
+  .staff-error { color: var(--c-red); font-size: 0.85rem; font-weight: 700; min-height: 1.2rem; margin-bottom: 0.5rem; }
+  .staff-warning { font-size: 0.8rem; font-weight: 700; color: var(--c-red); background: var(--c-red-light); border-radius: var(--radius-md); padding: 0.6rem 0.75rem; margin: 0 0 1rem; line-height: 1.5; }
+  #staff-edit-extra .btn-secondary { font-size: 0.85rem; padding-left: 0.5rem; padding-right: 0.5rem; white-space: nowrap; }
+  .credential-box { border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-bg); padding: 0.25rem 1rem; margin-bottom: 1rem; }
+  .credential-box div { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.6rem 0; }
+  .credential-box div + div { border-top: 1px solid var(--c-border); }
+  .credential-box span { font-size: 0.8rem; font-weight: 800; color: var(--c-text-muted); }
+  .credential-box b { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.03em; word-break: break-all; text-align: right; }
+  @media (max-width: 900px) {
+    .staff-add-btn { width: 100%; }
+    .staff-row { padding: 0.65rem 0.75rem; }
+  }
 </style>
