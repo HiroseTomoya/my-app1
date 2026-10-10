@@ -276,10 +276,12 @@
     document.getElementById('sidebar-avatar').textContent = currentStaffName.charAt(0);
     if (currentStaffRole === '管理者') {
       document.getElementById('nav-admin-li').style.display = 'block';
+      document.getElementById('nav-staff-li').style.display = 'block';
       document.getElementById('nav-section-admin').style.display = 'block';
       switchMode('admin');
     } else {
       document.getElementById('nav-admin-li').style.display = 'none';
+      document.getElementById('nav-staff-li').style.display = 'none';
       document.getElementById('nav-section-admin').style.display = 'none';
       switchMode('view');
     }
@@ -1785,9 +1787,11 @@
     const adminDailyPanel = document.getElementById('admin-daily-panel');
     const listSection     = document.getElementById('list-section');
     const adminUnsubInline = document.getElementById('admin-unsubmitted-inline');
+    const staffArea       = document.getElementById('staff-area');
     // リセット
     adminDailyPanel.style.display = 'none';
     if (adminUnsubInline) adminUnsubInline.style.display = 'none';
+    staffArea.style.display = 'none';
     selectedAdminDate = null;
     if (mode === 'submit') {
       document.getElementById('nav-submit').classList.add('active');
@@ -1886,7 +1890,222 @@
       loadHolidays(() => renderCalendar());
       loadAdminDesiredShifts();
     }
+    else if (mode === 'staff') {
+      document.getElementById('nav-staff').classList.add('active');
+      pageTitle.textContent = 'スタッフ管理';
+      calArea.style.display        = 'none';
+      rightPanel.style.display     = 'none';
+      myshiftTabs.style.display    = 'none';
+      staffArea.style.display      = 'block';
+      fabBtn.style.display         = 'none';
+      btnSaveGas.style.display     = 'none';
+      btnSaveAdmin.style.display   = 'none';
+      if (btnTempSave) btnTempSave.style.display = 'none';
+      loadStaffAdminList();
+    }
     if (window.innerWidth <= 900) closeBottomSheet();
+  }
+  // =========================================
+  // 管理者：スタッフ管理
+  // =========================================
+  let staffAdminList = [];
+  let editingStaffId = null; // null のときは新規追加
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+  function loadStaffAdminList() {
+    if (typeof google === 'undefined') {
+      // デモ用ローカルモック
+      if (staffAdminList.length === 0) {
+        staffAdminList = [
+          { id: '001', name: '山田 太郎', role: '一般', defaultPosition: 'キッチン', retired: false },
+          { id: '002', name: '佐藤 花子', role: '一般', defaultPosition: 'ホール', retired: false },
+          { id: '003', name: '鈴木 一郎', role: '一般', defaultPosition: 'リーダー', retired: false },
+          { id: 'admin', name: '管理者', role: '管理者', defaultPosition: '社員', retired: false },
+        ];
+      }
+      renderStaffAdminList();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(list => { staffAdminList = list; renderStaffAdminList(); })
+      .withFailureHandler(e => {
+        document.getElementById('staff-list').innerHTML = '<div class="empty-msg">読み込みに失敗しました。</div>';
+        showToast('スタッフ一覧の読み込みに失敗しました: ' + (e && e.message || e), 'error');
+      })
+      .getStaffAdminList(sessionToken);
+  }
+  function renderStaffAdminList() {
+    const container = document.getElementById('staff-list');
+    const showRetired = document.getElementById('staff-show-retired').checked;
+    const active = staffAdminList.filter(s => !s.retired);
+    const retiredCount = staffAdminList.length - active.length;
+    document.getElementById('staff-count').textContent =
+      `在籍 ${active.length}名` + (retiredCount > 0 ? `（退職 ${retiredCount}名）` : '');
+    const list = showRetired ? staffAdminList : active;
+    if (list.length === 0) {
+      container.innerHTML = '<div class="empty-msg">スタッフが登録されていません。<br>「スタッフを追加」から登録してください。</div>';
+      return;
+    }
+    container.innerHTML = '';
+    list.forEach(staff => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'staff-row' + (staff.retired ? ' retired' : '');
+      row.onclick = () => openStaffModal(staff.id);
+      row.innerHTML = `
+        <span class="staff-avatar">${escapeHtml(staff.name.charAt(0))}</span>
+        <span class="staff-main">
+          <span class="staff-name" style="display:block;">${escapeHtml(staff.name)}</span>
+          <span class="staff-id">ID: ${escapeHtml(staff.id)}</span>
+        </span>
+        <span class="staff-tags">
+          ${staff.retired ? '<span class="staff-tag retired">退職</span>' : ''}
+          ${staff.role === '管理者' ? '<span class="staff-tag admin">管理者</span>' : ''}
+          <span class="pos-badge ${escapeHtml(staff.defaultPosition)}" style="font-size:0.7rem;">${escapeHtml(staff.defaultPosition)}</span>
+        </span>
+        <span class="material-symbols-outlined" style="color:var(--c-text-muted); font-size:1.2rem;">chevron_right</span>
+      `;
+      container.appendChild(row);
+    });
+  }
+  function openStaffModal(staffId) {
+    const staff = staffId === null ? null : staffAdminList.find(s => s.id === staffId);
+    editingStaffId = staff ? staff.id : null;
+    document.getElementById('staff-edit-title').textContent = staff ? 'スタッフを編集' : 'スタッフを追加';
+    document.getElementById('staff-edit-name').value = staff ? staff.name : '';
+    document.getElementById('staff-edit-position').value = staff ? staff.defaultPosition : 'ホール';
+    document.getElementById('staff-edit-role').value = staff ? staff.role : '一般';
+    document.getElementById('staff-edit-save-label').textContent = staff ? '変更を保存' : '追加する';
+    document.getElementById('staff-edit-note').textContent = staff
+      ? `ログインID: ${staff.id}` + (staff.retired ? '（退職済み・ログインできません）' : '')
+      : 'ログインIDと初期パスワードは、追加したときに自動で発行されます。';
+    document.getElementById('staff-edit-error').textContent = '';
+    document.getElementById('staff-edit-extra').style.display = staff ? 'flex' : 'none';
+    if (staff) {
+      const retireBtn = document.getElementById('staff-edit-retire');
+      retireBtn.textContent = staff.retired ? '在籍に戻す' : '退職にする';
+      retireBtn.style.color = staff.retired ? '' : 'var(--c-red)';
+    }
+    document.getElementById('staff-edit-modal').classList.add('show');
+    if (!staff) document.getElementById('staff-edit-name').focus();
+  }
+  function closeStaffModal() {
+    document.getElementById('staff-edit-modal').classList.remove('show');
+  }
+  function readStaffModalInput() {
+    return {
+      name: document.getElementById('staff-edit-name').value.trim(),
+      defaultPosition: document.getElementById('staff-edit-position').value,
+      role: document.getElementById('staff-edit-role').value
+    };
+  }
+  // スタッフ管理のサーバー呼び出しを共通化 (成功時に一覧とキャッシュを更新する)
+  function callStaffApi(fnName, args, onSuccess) {
+    const err = document.getElementById('staff-edit-error');
+    err.textContent = '';
+    if (typeof google === 'undefined') {
+      showToast('デモ版ではスタッフ情報を変更できません。', 'error');
+      return;
+    }
+    const btn = document.getElementById('staff-edit-save');
+    btn.disabled = true;
+    google.script.run
+      .withSuccessHandler(res => {
+        btn.disabled = false;
+        if (!res.success) { err.textContent = res.message; return; }
+        // 名前やポジションが変わるので、取得済みのシフトデータは捨てて取り直す
+        Object.keys(_dataCache).forEach(k => _dataCache[k] = {});
+        onSuccess(res);
+        loadStaffAdminList();
+      })
+      .withFailureHandler(e => {
+        btn.disabled = false;
+        err.textContent = '通信エラーが発生しました: ' + (e && e.message || e);
+      })[fnName](sessionToken, ...args);
+  }
+  function saveStaffModal() {
+    const input = readStaffModalInput();
+    if (!input.name) {
+      document.getElementById('staff-edit-error').textContent = '名前を入力してください。';
+      return;
+    }
+    if (editingStaffId === null) {
+      callStaffApi('addStaff', [input], res => {
+        closeStaffModal();
+        showStaffCredential('スタッフを追加しました', res.staff.name, res.staff.id, res.password);
+      });
+      return;
+    }
+    const current = staffAdminList.find(s => s.id === editingStaffId);
+    input.id = editingStaffId;
+    input.retired = !!(current && current.retired);
+    callStaffApi('updateStaff', [input], res => {
+      closeStaffModal();
+      showToast('スタッフ情報を更新しました。');
+      if (res.staff.id === currentStaffId) {
+        // 自分の名前を変えた場合はサイドバーにも反映する
+        setLoginSession(res.staff.id, res.staff.name, res.staff.role, res.staff.defaultPosition, sessionToken, true);
+        document.getElementById('sidebar-user-name').textContent = currentStaffName;
+        document.getElementById('sidebar-avatar').textContent = currentStaffName.charAt(0);
+      }
+    });
+  }
+  function toggleStaffRetiredFromModal() {
+    const current = staffAdminList.find(s => s.id === editingStaffId);
+    if (!current) return;
+    const toRetired = !current.retired;
+    const message = toRetired
+      ? `${current.name} さんを退職にしますか？\n\n・ログインできなくなります\n・シフト作成画面と未提出者一覧から外れます\n・明日以降の確定シフトは取り消されます\n・過去のシフトは残ります`
+      : `${current.name} さんを在籍に戻しますか？`;
+    if (!confirm(message)) return;
+    const input = { id: current.id, name: current.name, role: current.role, defaultPosition: current.defaultPosition, retired: toRetired };
+    callStaffApi('updateStaff', [input], () => {
+      closeStaffModal();
+      showToast(toRetired ? '退職にしました。' : '在籍に戻しました。');
+    });
+  }
+  function resetStaffPasswordFromModal() {
+    const current = staffAdminList.find(s => s.id === editingStaffId);
+    if (!current) return;
+    if (!confirm(`${current.name} さんのパスワードを再発行しますか？\n今のパスワードは使えなくなります。`)) return;
+    callStaffApi('resetStaffPassword', [current.id], res => {
+      if (res.token) {
+        // 自分のパスワードを変えた場合は、新しいログイン証明に差し替える
+        setLoginSession(currentStaffId, currentStaffName, currentStaffRole, currentStaffDefaultPosition, res.token, true);
+        localStorage.removeItem('shift_app_remember_pwd');
+      }
+      closeStaffModal();
+      showStaffCredential('パスワードを再発行しました', res.name, res.id, res.password);
+    });
+  }
+  function showStaffCredential(title, name, id, password) {
+    document.getElementById('staff-credential-title').textContent = title;
+    document.getElementById('staff-credential-name').textContent = name;
+    document.getElementById('staff-credential-id').textContent = id;
+    document.getElementById('staff-credential-password').textContent = password;
+    document.getElementById('staff-credential-modal').classList.add('show');
+  }
+  function copyStaffCredential() {
+    const text = `ログインID: ${document.getElementById('staff-credential-id').textContent}\nパスワード: ${document.getElementById('staff-credential-password').textContent}`;
+    const done = () => showToast('コピーしました。');
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { showToast('コピーできませんでした。手で控えてください。', 'error'); }
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+  function closeStaffCredentialModal() {
+    document.getElementById('staff-credential-modal').classList.remove('show');
+    document.getElementById('staff-credential-password').textContent = '';
   }
   // =========================================
   // UI補助・ユーティリティ

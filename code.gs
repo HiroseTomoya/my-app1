@@ -39,7 +39,7 @@ function _formatTimeStr(val) {
  * 従業員一覧を `Users` シートから取得
  * ※ 関数名の末尾が「_」のものは google.script.run から呼び出せない（サーバー内部専用）
  */
-function getStaffList_() {
+function getStaffList_(includeRetired) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Users');
   if (!sheet) return [];
@@ -47,14 +47,17 @@ function getStaffList_() {
   const data = sheet.getDataRange().getValues();
   const staffList = [];
 
-  // A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition
+  // A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition, F:Status
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) {
+    if (String(data[i][0]).trim() !== '') {
+      const retired = String(data[i][5] || '').trim() === STATUS_RETIRED;
+      if (retired && !includeRetired) continue;
       staffList.push({
-        id: String(data[i][0]),
+        id: String(data[i][0]).trim(),
         name: String(data[i][2]),
         role: String(data[i][3]),
-        defaultPosition: String(data[i][4] || 'ホール')
+        defaultPosition: String(data[i][4] || 'ホール'),
+        retired: retired
       });
     }
   }
@@ -88,6 +91,9 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // ログイン状態の有効�
 const LOGIN_MAX_FAILURES = 5;                    // この回数連続で失敗するとロック
 const LOGIN_LOCK_SECONDS = 10 * 60;              // ロック時間 (10分)
 const ADMIN_ROLE = '管理者';
+const STAFF_ROLES = ['一般', ADMIN_ROLE];
+const STAFF_POSITIONS = ['ホール', 'キッチン', 'リーダー', '社員'];
+const STATUS_RETIRED = '退職'; // Users シート F列。空欄は在籍中
 const MSG_LOGIN_FAILED = 'ユーザーIDまたはパスワードが正しくありません。';
 const MSG_SESSION_INVALID = 'ログインの有効期限が切れました。もう一度ログインしてください。';
 
@@ -100,13 +106,13 @@ function findUser_(staffId) {
   const target = String(staffId).trim();
   if (!target) return null;
 
-  // Users: A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition
+  // Users: A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition, F:Status
   let sheet = ss.getSheetByName('Users');
-  let col = { pwd: 1, name: 2, role: 3, pos: 4 };
+  let col = { pwd: 1, name: 2, role: 3, pos: 4, status: 5 };
   if (!sheet) {
     // 従業員マスター: A:ID, B:Name, C:Position, D:Password (権限カラムがないため全員一般扱い)
     sheet = ss.getSheetByName('従業員マスター');
-    col = { pwd: 3, name: 1, role: -1, pos: 2 };
+    col = { pwd: 3, name: 1, role: -1, pos: 2, status: -1 };
   }
   if (!sheet) return null;
 
@@ -119,6 +125,7 @@ function findUser_(staffId) {
         role: col.role >= 0 ? String(data[i][col.role]) : '一般',
         defaultPosition: String(data[i][col.pos] || 'ホール'),
         stored: String(data[i][col.pwd] || '').trim(),
+        retired: col.status >= 0 && String(data[i][col.status] || '').trim() === STATUS_RETIRED,
         sheet: sheet,
         row: i + 1,
         pwdCol: col.pwd + 1
@@ -184,7 +191,7 @@ function requireSession_(token, adminOnly) {
   try {
     user = findUser_(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString());
   } catch (e) {}
-  if (!user || signSession_(parts[0] + '.' + parts[1], user) !== parts[2]) throw new Error(MSG_SESSION_INVALID);
+  if (!user || user.retired || signSession_(parts[0] + '.' + parts[1], user) !== parts[2]) throw new Error(MSG_SESSION_INVALID);
 
   if (adminOnly && user.role !== ADMIN_ROLE) throw new Error('この操作を行う権限がありません。');
   return user;
@@ -229,7 +236,7 @@ function authenticateStaff(staffId, passwordHash) {
   }
 
   const user = findUser_(staffId);
-  const check = user ? checkPassword_(user.stored, String(passwordHash || '')) : { ok: false };
+  const check = (user && !user.retired) ? checkPassword_(user.stored, String(passwordHash || '')) : { ok: false };
   if (!check.ok) {
     cache.put(failKey, String(failures + 1), LOGIN_LOCK_SECONDS);
     return { success: false, message: MSG_LOGIN_FAILED };
@@ -613,11 +620,15 @@ function saveConfirmedShiftsLocked_(payload) {
   // 削除対象行を除いたデータを再構築
   const finalRows = [];
 
+  // 今回の保存対象スタッフ。ここに含まれない人 (退職者など) の確定シフトは消さずに残す
+  const payloadIds = {};
+  payload.data.forEach(staff => { payloadIds[String(staff.id)] = true; });
+
   // 保存されてる行を走査
   for (let i = 1; i < data.length; i++) {
     const dStr = _formatDateStr(data[i][0]);
-    // 期間内の日付でなければ残す
-    if (!targetDates.includes(dStr)) {
+    // 期間内の日付でない、または今回の保存対象スタッフでなければ残す
+    if (!targetDates.includes(dStr) || !payloadIds[String(data[i][1])]) {
       finalRows.push([
         data[i][0] instanceof Date ? data[i][0] : "'" + dStr,
         String(data[i][1]),
@@ -660,6 +671,183 @@ function saveConfirmedShiftsLocked_(payload) {
   return { success: true };
 }
 
+// =========================================
+// 管理者: スタッフ管理
+// =========================================
+
+/**
+ * 編集用に Users シートを取得する。F列 (Status) の見出しがなければ追加する。
+ */
+function getUsersSheetForEdit_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  if (!sheet) return null;
+  if (String(sheet.getRange(1, 6).getValue()).trim() === '') {
+    sheet.getRange(1, 6).setValue('Status');
+  }
+  return sheet;
+}
+
+/**
+ * 初期パスワードを生成する (見間違えやすい 0/o/1/l/i は使わない)
+ */
+function generatePassword_() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, Utilities.getUuid() + Date.now(), Utilities.Charset.UTF_8);
+  let password = '';
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt((bytes[i] & 0xff) % chars.length);
+  }
+  return password;
+}
+
+/**
+ * 新しいスタッフIDを採番する (既存の数字IDの最大値 + 1 を3桁以上のゼロ埋めで返す)
+ */
+function nextStaffId_(sheet) {
+  const data = sheet.getDataRange().getValues();
+  const used = {};
+  let max = 0;
+  let width = 3;
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][0]).trim();
+    used[id] = true;
+    if (/^\d+$/.test(id)) {
+      max = Math.max(max, Number(id));
+      width = Math.max(width, id.length);
+    }
+  }
+  let next = max + 1;
+  let id = String(next).padStart(width, '0');
+  while (used[id]) {
+    next++;
+    id = String(next).padStart(width, '0');
+  }
+  return id;
+}
+
+function validateStaffInput_(input) {
+  const name = String((input && input.name) || '').trim();
+  const role = String((input && input.role) || '');
+  const position = String((input && input.defaultPosition) || '');
+  if (!name) return { error: '名前を入力してください。' };
+  if (name.length > 30) return { error: '名前は30文字以内で入力してください。' };
+  if (STAFF_ROLES.indexOf(role) < 0) return { error: '権限が正しくありません。' };
+  if (STAFF_POSITIONS.indexOf(position) < 0) return { error: 'ポジションが正しくありません。' };
+  return { name: name, role: role, defaultPosition: position };
+}
+
+/**
+ * 管理者: スタッフ一覧を取得 (退職者を含む)
+ */
+function getStaffAdminList(token) {
+  requireSession_(token, true);
+  return getStaffList_(true);
+}
+
+/**
+ * 管理者: スタッフを追加する。IDと初期パスワードは自動で発行して返す。
+ * パスワードはこの戻り値でしか確認できない (シートにはハッシュだけを保存する)。
+ */
+function addStaff(token, input) {
+  requireSession_(token, true);
+  const v = validateStaffInput_(input);
+  if (v.error) return { success: false, message: v.error };
+
+  return withLock_(() => {
+    const sheet = getUsersSheetForEdit_();
+    if (!sheet) return { success: false, message: 'Users シートが見つかりません。' };
+
+    const id = nextStaffId_(sheet);
+    const password = generatePassword_();
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([[
+      "'" + id,
+      makeSaltedPassword_(_computeSha256(password)),
+      asText_(v.name, 30),
+      v.role,
+      v.defaultPosition,
+      ''
+    ]]);
+    return {
+      success: true,
+      password: password,
+      staff: { id: id, name: v.name, role: v.role, defaultPosition: v.defaultPosition, retired: false }
+    };
+  });
+}
+
+/**
+ * 管理者: スタッフの名前・権限・ポジション・在籍状況を更新する。
+ * 退職にするとログインできなくなり、シフト作成画面と未提出者一覧から外れる。
+ * 過去のシフトは残し、明日以降の確定シフトだけを取り消す。
+ */
+function updateStaff(token, input) {
+  const me = requireSession_(token, true);
+  const v = validateStaffInput_(input);
+  if (v.error) return { success: false, message: v.error };
+  const retired = !!(input && input.retired);
+
+  return withLock_(() => {
+    const sheet = getUsersSheetForEdit_();
+    const target = sheet ? findUser_(input.id) : null;
+    if (!target) return { success: false, message: 'スタッフが見つかりません。画面を再読み込みしてください。' };
+    // 管理者が誰もいなくなるのを防ぐため、自分自身の降格・退職はできない
+    if (target.id === me.id && (v.role !== ADMIN_ROLE || retired)) {
+      return { success: false, message: '自分自身を管理者から外したり、退職にしたりすることはできません。' };
+    }
+
+    sheet.getRange(target.row, 3, 1, 4).setValues([[
+      asText_(v.name, 30),
+      v.role,
+      v.defaultPosition,
+      retired ? STATUS_RETIRED : ''
+    ]]);
+    if (retired && !target.retired) removeFutureConfirmedShifts_(target.id);
+
+    return {
+      success: true,
+      staff: { id: target.id, name: v.name, role: v.role, defaultPosition: v.defaultPosition, retired: retired }
+    };
+  });
+}
+
+/**
+ * 管理者: パスワードを再発行する。新しいパスワードはこの戻り値でしか確認できない。
+ * 対象スタッフの既存のログイン状態は無効になる。
+ */
+function resetStaffPassword(token, staffId) {
+  const me = requireSession_(token, true);
+
+  return withLock_(() => {
+    const sheet = getUsersSheetForEdit_();
+    const target = sheet ? findUser_(staffId) : null;
+    if (!target) return { success: false, message: 'スタッフが見つかりません。画面を再読み込みしてください。' };
+
+    const password = generatePassword_();
+    target.stored = makeSaltedPassword_(_computeSha256(password));
+    sheet.getRange(target.row, target.pwdCol).setValue(target.stored);
+
+    const res = { success: true, id: target.id, name: target.name, password: password };
+    // 自分のパスワードを変えた場合は、操作を続けられるよう新しいトークンを返す
+    if (target.id === me.id) res.token = issueSessionToken_(target);
+    return res;
+  });
+}
+
+/**
+ * 指定スタッフの、明日以降の確定シフトを削除する (退職処理用)
+ */
+function removeFutureConfirmedShifts_(staffId) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Confirmed_Shifts');
+  if (!sheet) return;
+  const today = _formatDateStr(new Date());
+  const data = sheet.getDataRange().getValues();
+  for (let i = data.length - 1; i > 0; i--) {
+    if (String(data[i][1]) === String(staffId) && _formatDateStr(data[i][0]) > today) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+}
+
 /**
  * 【便利ツール】スプレッドシートの初期セットアップ（初回のみ実行）
  */
@@ -677,11 +865,11 @@ function setupSpreadsheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // 1. Users シート
-  // A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition
+  // A:ID, B:PasswordHash, C:Name, D:Role, E:DefaultPosition, F:Status (空欄=在籍 / 退職)
   let userSheet = ss.getSheetByName('Users');
   if (!userSheet) userSheet = ss.insertSheet('Users');
   userSheet.clear();
-  userSheet.appendRow(['ID', 'PasswordHash', 'Name', 'Role', 'DefaultPosition']);
+  userSheet.appendRow(['ID', 'PasswordHash', 'Name', 'Role', 'DefaultPosition', 'Status']);
   // 初期テストデータ (パスワードは一般が「1234」、管理者が「test」)
   // ※ 本番で使う前に必ず変更すること。B列に新しいパスワードをそのまま入力すれば、
   //    次回ログイン時に自動でソルト付きハッシュへ置き換わる。
