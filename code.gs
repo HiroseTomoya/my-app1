@@ -270,6 +270,47 @@ function verifySession(token) {
 }
 
 /**
+ * 本人によるパスワード変更。
+ * currentHash / newHash はフロントエンド側で SHA-256 ハッシュ化された文字列。
+ * 変更すると既存のログイン状態が無効になるため、新しいトークンを返す。
+ */
+function changeMyPassword(token, currentHash, newHash) {
+  const session = requireSession_(token);
+  currentHash = String(currentHash || '');
+  newHash = String(newHash || '');
+  // 空文字の SHA-256 (＝新しいパスワードが空) は受け付けない
+  const EMPTY_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  if (!/^[0-9a-f]{64}$/.test(newHash) || newHash === EMPTY_HASH) {
+    return { success: false, message: '新しいパスワードが正しくありません。' };
+  }
+  if (newHash === currentHash) {
+    return { success: false, message: '新しいパスワードが今のパスワードと同じです。' };
+  }
+
+  // 総当たり対策: ログイン中の端末を他人に触られても、今のパスワードを当てられないようにする
+  const cache = CacheService.getScriptCache();
+  const failKey = 'pwchange_fail_' + _computeSha256(session.id);
+  const failures = Number(cache.get(failKey) || 0);
+  if (failures >= LOGIN_MAX_FAILURES) {
+    return { success: false, message: '失敗が続いたため一時的にロックしています。10分ほど待ってからお試しください。' };
+  }
+
+  return withLock_(() => {
+    const user = findUser_(session.id);
+    if (!user || user.retired) return { success: false, message: MSG_SESSION_INVALID };
+    if (!checkPassword_(user.stored, currentHash).ok) {
+      cache.put(failKey, String(failures + 1), LOGIN_LOCK_SECONDS);
+      return { success: false, message: '今のパスワードが正しくありません。' };
+    }
+    cache.remove(failKey);
+
+    user.stored = makeSaltedPassword_(newHash);
+    user.sheet.getRange(user.row, user.pwdCol).setValue(user.stored);
+    return { success: true, token: issueSessionToken_(user) };
+  });
+}
+
+/**
  * ユーティリティ: 「=」などで始まる入力が数式として実行されないよう文字列として保存する
  */
 function asText_(val, maxLength) {

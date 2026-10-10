@@ -161,6 +161,38 @@
         </div>
       </div>
     </div>
+    <!-- ===== パスワード変更モーダル ===== -->
+    <div id="password-modal" class="modal-overlay" onclick="if(event.target===this) closePasswordModal()">
+      <div class="modal-content" style="max-width: 400px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--c-border); padding-bottom:0.75rem;">
+          <h3 style="margin:0; font-weight:800; font-size:1.1rem;">パスワード変更</h3>
+          <button class="btn-remove" onclick="closePasswordModal()" style="padding:0.4rem;">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="form-group">
+          <label>今のパスワード（初めて変える方は、受け取った初期パスワード）</label>
+          <input type="password" id="password-current" autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label>新しいパスワード（6文字以上）</label>
+          <input type="password" id="password-new" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label>新しいパスワード（確認のためもう一度）</label>
+          <input type="password" id="password-new-confirm" autocomplete="new-password">
+        </div>
+        <label class="staff-retired-toggle" style="margin-bottom:0.75rem;">
+          <input type="checkbox" id="password-show" onchange="togglePasswordVisibility()">
+          入力したパスワードを表示する
+        </label>
+        <div id="password-error" class="staff-error"></div>
+        <button class="btn-add" id="password-save" style="width:100%;" onclick="submitPasswordChange()">
+          <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">check</span>
+          変更する
+        </button>
+      </div>
+    </div>
     <!-- ===== 管理者: スタッフ追加・編集モーダル ===== -->
     <div id="staff-edit-modal" class="modal-overlay" onclick="if(event.target===this) closeStaffModal()">
       <div class="modal-content" style="max-width: 420px;">
@@ -215,11 +247,11 @@
         <div class="credential-box">
           <div><span>名前</span><b id="staff-credential-name"></b></div>
           <div><span>ログインID</span><b id="staff-credential-id"></b></div>
-          <div><span>パスワード</span><b id="staff-credential-password"></b></div>
+          <div><span id="staff-credential-password-label">初期パスワード</span><b id="staff-credential-password"></b></div>
         </div>
         <p class="staff-warning">
           <span class="material-symbols-outlined" style="font-size:1rem; vertical-align:middle;">warning</span>
-          パスワードは今しか表示されません。閉じる前に控えてください。
+          <span id="staff-credential-warning">初期パスワードは今しか表示されません。閉じる前に控えてください。</span>
         </p>
         <div style="display:flex; gap:0.75rem;">
           <button class="btn-secondary" style="flex:1;" onclick="copyStaffCredential()">
@@ -269,6 +301,7 @@
             <li id="nav-myshift-li"><a href="javascript:void(0)" id="nav-myshift" onclick="switchMode('view'); return false;"><span class="material-symbols-outlined">calendar_today</span>マイシフト</a></li>
             <li id="nav-allshift-li"><a href="javascript:void(0)" id="nav-allshift" onclick="switchMode('allshift'); return false;"><span class="material-symbols-outlined">groups</span>全体シフト</a></li>
             <li id="nav-submit-li"><a href="javascript:void(0)" id="nav-submit" onclick="switchMode('submit'); return false;"><span class="material-symbols-outlined">edit_calendar</span>シフト希望提出</a></li>
+            <li id="nav-password-li"><a href="javascript:void(0)" id="nav-password" onclick="openPasswordModal(); return false;"><span class="material-symbols-outlined">key</span>パスワード変更</a></li>
             <li class="nav-section-title" id="nav-section-admin" style="display:none;">管理メニュー</li>
             <li id="nav-admin-li" style="display:none;"><a href="javascript:void(0)" id="nav-admin" onclick="switchMode('admin'); return false;"><span class="material-symbols-outlined">admin_panel_settings</span>シフト作成・編集</a></li>
             <li id="nav-staff-li" style="display:none;"><a href="javascript:void(0)" id="nav-staff" onclick="switchMode('staff'); return false;"><span class="material-symbols-outlined">manage_accounts</span>スタッフ管理</a></li>

@@ -1906,6 +1906,73 @@
     if (window.innerWidth <= 900) closeBottomSheet();
   }
   // =========================================
+  // パスワード変更 (本人)
+  // =========================================
+  const PASSWORD_MIN_LENGTH = 6;
+  const PASSWORD_FIELD_IDS = ['password-current', 'password-new', 'password-new-confirm'];
+  function openPasswordModal() {
+    PASSWORD_FIELD_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      el.value = '';
+      el.type = 'password';
+    });
+    document.getElementById('password-show').checked = false;
+    document.getElementById('password-error').textContent = '';
+    document.getElementById('password-modal').classList.add('show');
+    if (window.innerWidth <= 900) closeBottomSheet();
+    document.getElementById('password-current').focus();
+  }
+  function closePasswordModal() {
+    document.getElementById('password-modal').classList.remove('show');
+    PASSWORD_FIELD_IDS.forEach(id => { document.getElementById(id).value = ''; });
+  }
+  function togglePasswordVisibility() {
+    const show = document.getElementById('password-show').checked;
+    PASSWORD_FIELD_IDS.forEach(id => { document.getElementById(id).type = show ? 'text' : 'password'; });
+  }
+  async function submitPasswordChange() {
+    const current = document.getElementById('password-current').value;
+    const next    = document.getElementById('password-new').value;
+    const confirm = document.getElementById('password-new-confirm').value;
+    const err     = document.getElementById('password-error');
+    const btn     = document.getElementById('password-save');
+    err.textContent = '';
+    if (!current) { err.textContent = '今のパスワードを入力してください。'; return; }
+    if (next.length < PASSWORD_MIN_LENGTH) { err.textContent = `新しいパスワードは${PASSWORD_MIN_LENGTH}文字以上にしてください。`; return; }
+    if (next !== confirm) { err.textContent = '新しいパスワードが確認用と一致しません。'; return; }
+    if (next === current) { err.textContent = '新しいパスワードが今のパスワードと同じです。'; return; }
+    if (typeof google === 'undefined') {
+      showToast('デモ版ではパスワードを変更できません。', 'error');
+      return;
+    }
+    btn.disabled = true;
+    const currentHash = await sha256(current);
+    const newHash = await sha256(next);
+    if (!newHash) {
+      // 簡易版ハッシュは半角英数字・記号にしか対応していない
+      btn.disabled = false;
+      err.textContent = 'パスワードは半角の英数字・記号で入力してください。';
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(res => {
+        btn.disabled = false;
+        if (!res.success) { err.textContent = res.message; return; }
+        // 古いログイン証明は無効になるので、新しいものに差し替える
+        setLoginSession(currentStaffId, currentStaffName, currentStaffRole, currentStaffDefaultPosition, res.token, true);
+        if (localStorage.getItem('shift_app_remember_pwd') !== null) {
+          localStorage.setItem('shift_app_remember_pwd', next);
+        }
+        closePasswordModal();
+        showToast('パスワードを変更しました。');
+      })
+      .withFailureHandler(e => {
+        btn.disabled = false;
+        err.textContent = '通信エラーが発生しました: ' + (e && e.message || e);
+      })
+      .changeMyPassword(sessionToken, currentHash, newHash);
+  }
+  // =========================================
   // 管理者：スタッフ管理
   // =========================================
   let staffAdminList = [];
@@ -2033,7 +2100,7 @@
     if (editingStaffId === null) {
       callStaffApi('addStaff', [input], res => {
         closeStaffModal();
-        showStaffCredential('スタッフを追加しました', res.staff.name, res.staff.id, res.password);
+        showStaffCredential('スタッフを追加しました', res.staff.name, res.staff.id, res.password, '初期パスワード');
       });
       return;
     }
@@ -2076,18 +2143,20 @@
         localStorage.removeItem('shift_app_remember_pwd');
       }
       closeStaffModal();
-      showStaffCredential('パスワードを再発行しました', res.name, res.id, res.password);
+      showStaffCredential('パスワードを再発行しました', res.name, res.id, res.password, '初期パスワード');
     });
   }
-  function showStaffCredential(title, name, id, password) {
+  function showStaffCredential(title, name, id, password, passwordLabel) {
     document.getElementById('staff-credential-title').textContent = title;
+    document.getElementById('staff-credential-password-label').textContent = passwordLabel;
+    document.getElementById('staff-credential-warning').textContent = `${passwordLabel}は今しか表示されません。閉じる前に控えてください。`;
     document.getElementById('staff-credential-name').textContent = name;
     document.getElementById('staff-credential-id').textContent = id;
     document.getElementById('staff-credential-password').textContent = password;
     document.getElementById('staff-credential-modal').classList.add('show');
   }
   function copyStaffCredential() {
-    const text = `ログインID: ${document.getElementById('staff-credential-id').textContent}\nパスワード: ${document.getElementById('staff-credential-password').textContent}`;
+    const text = `ログインID: ${document.getElementById('staff-credential-id').textContent}\n初期パスワード: ${document.getElementById('staff-credential-password').textContent}\n※ログイン後、メニューの「パスワード変更」から自分のパスワードに変更してください。`;
     const done = () => showToast('コピーしました。');
     const fallback = () => {
       const ta = document.createElement('textarea');
